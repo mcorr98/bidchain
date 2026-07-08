@@ -1,0 +1,93 @@
+import { createHash, randomBytes } from "crypto";
+
+/**
+ * Genesis prev_hash: 64 zeros, not nullable, per schema (prev_hash VARCHAR(64) NOT NULL).
+ * The first event in every per-property chain links to this.
+ */
+export const GENESIS_HASH = "0".repeat(64);
+
+/**
+ * The eleven event types. Kept as a const so the validator
+ * and the hashing code share one source of truth.
+ */
+export type EventType =
+    "LISTING_CREATED"
+    | "BID_PLACED"
+    | "BID_REVISED"
+    | "BID_WITHDRAWN"
+    | "BID_RECONFIRMED"
+    | "BID_ACCEPTED"
+    | "BIDDING_CLOSED"
+    | "BIDDING_REOPENED"
+    | "LISTING_WITHDRAWN"
+    | "SALE_COLLAPSED"
+    | "PROPERTY_RELISTED";
+
+
+/**
+ * Values that can survive JSON.stringify.
+ * Blocks Date/undefined/functions from the preimage to prevent a broken hash (JSON.stringify silently changes or drops them which would corrupt the chain)
+ */
+export type JsonValue =
+    string
+    | number
+    | boolean
+    | null
+    | JsonValue[]
+    | { [key: string]: JsonValue };
+
+/**
+ * Order fields will always be hashed in so that same date = same hash
+ */
+export interface EventPreimage {
+    property_id: number;
+    sequence: number;
+    event_type: EventType;
+    actor_id: number;
+    timestamp: string;
+    detail: JsonValue;
+    nonce: string;
+    prev_hash: string;
+}
+
+/**
+ * Recursively sorts object keys so the same logical data always serialises to the
+ * same string regardless of key order.
+ */
+export function canonicalise(value: JsonValue): JsonValue {
+    if (Array.isArray(value)) {
+        const result: JsonValue[] = [];
+        for (const element of value) {
+            result.push(canonicalise(element));
+        }
+        return result;
+    } else if (value !== null && typeof value === "object") {
+        const sortedKeys = Object.keys(value).sort();
+        const result: { [key: string]: JsonValue } = {};
+        for (const key of sortedKeys) {
+            result[key] = canonicalise(value[key]);
+        }
+        return result;
+    } else {
+        return value;
+    }
+}
+
+/**
+ * Computes the SHA-256 hash of an event's preimage.
+ */
+export function hashEvent(preimage: EventPreimage): string {
+    const canonicalPreimage = canonicalise(
+        preimage as unknown as JsonValue
+    );
+    const canonicalString = JSON.stringify(canonicalPreimage);
+    return createHash("sha256").update(canonicalString).digest("hex");
+}
+
+/**
+ * Generates a 32-character hex nonce (16 random bytes).
+ * Matches the schema (nonce VARCHAR(32) NOT NULL.)
+ */
+export function makeNonce(): string {
+    return randomBytes(16).toString("hex");
+}

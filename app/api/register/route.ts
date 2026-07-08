@@ -5,7 +5,7 @@ import pool from "@/lib/db";
 const VALID_ROLES = ["vendor", "bidder", "agent"];
 
 export async function POST(request: Request) {
-    const { email, password, name, role, firm_name } = await request.json();
+    const { email, password, name, role, agency_name } = await request.json();
 
     if (!email || !password || !name || !role) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -42,8 +42,8 @@ export async function POST(request: Request) {
             );
         } else if (role === "agent") {
             await client.query(
-                `INSERT INTO agent_profiles (user_id, firm_name) VALUES ($1, $2)`,
-                [userId, firm_name ?? "Unknown"]
+                `INSERT INTO agent_profiles (user_id, agency_name) VALUES ($1, $2)`,
+                [userId, agency_name ?? "Unknown"]
             );
         }
         await client.query("COMMIT");
