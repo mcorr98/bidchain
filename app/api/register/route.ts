@@ -25,10 +25,10 @@ export async function POST(request: Request) {
 
         const userResult = await client.query(
             `INSERT INTO users(email, password_hash, name, role)
-            VALUES ($1, $2, $3, $4) RETURNING id`,
+            VALUES ($1, $2, $3, $4) RETURNING user_id`,
             [email, password_hash, name, role]
         );
-        const userId = userResult.rows[0].id;
+        const userId = userResult.rows[0].user_id;
 
         if (role === "bidder") {
             await client.query(

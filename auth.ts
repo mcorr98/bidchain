@@ -2,7 +2,6 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
 import pool from "@/lib/db";
-import { constants } from "buffer";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     providers: [
@@ -15,7 +14,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 if (!credentials?.email || !credentials?.password) return null;
 
                 const result = pool.query(
-                    "SELECT id, email, name, role, password_hash FROM users WHERE email = $1",
+                    "SELECT user_id, email, name, role, password_hash FROM users WHERE email = $1",
                     [credentials.email]
                 );
 
@@ -29,7 +28,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 if (!valid) return null;
 
                 return {
-                    id: String(user.id),
+                    id: String(user.user_id),
                     email: user.email,
                     name: user.name,
                     role: user.role,
