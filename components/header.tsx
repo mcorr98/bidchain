@@ -8,13 +8,13 @@ export default async function Header() {
     if (session) {
         accountArea = (
             <div className="flex items-centre gap-4">
-                <span className="text-sm text-gray-700">
+                <span className="flex items-center gap-2 text-sm text-gray-700">
                     {session.user.name}
                     <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-xs uppercase tracking-wide text-gray-700">
                         {session.user.role}
                     </span>
                 </span>
-                <form
+                <form className="flex"
                     action={async () => {
                         "use server";
                         await signOut({ redirectTo: "/ " });
@@ -42,7 +42,7 @@ export default async function Header() {
 
     return (
         <header className="border-b border-gray-200 bg-white">
-            <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+            <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
                 <Link href="/" className="text-lg font-semibold tracking-tight">
                     BidChain
                 </Link>

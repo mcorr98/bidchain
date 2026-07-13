@@ -1,6 +1,8 @@
 import pool from "@/lib/db";
 import Link from "next/link";
 import { ListingType, formatPrice, listingTypeLabel, featuresLine } from "@/lib/format";
+import { auth } from "@/auth";
+import { redirect } from "next/navigation";
 
 type Property = {
     property_id: number,
@@ -26,16 +28,22 @@ type Property = {
 
 export default async function PropertiesPage() {
 
-
+    const session = await auth();
+    if (!session) {
+        redirect("/login");
+    }
     const result = await pool.query<Property>(`
-        SELECT * FROM properties WHERE status = $1 ORDER BY created_at DESC`,
-        ["active"]);
+        SELECT p.property_id, p.address_line_1, p.city, p.postcode, p.listing_type, p.asking_price, p.image_path, p.bedrooms, p.bathrooms, p.receptions
+        FROM properties p 
+        JOIN property_participants pp ON pp.property_id = p.property_id 
+        WHERE pp.user_id = $1 AND pp.status = $2 AND p.status = $3 ORDER BY p.created_at DESC`,
+        [session.user.id, "joined", "active"]);
 
     const properties = result.rows;
 
     let content;
     if (properties.length === 0) {
-        content = <p>No properties are currently listed</p>
+        content = <p>You haven't joined any properties yet</p>
     } else {
         content = <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {properties.map((property) => {
@@ -67,7 +75,7 @@ export default async function PropertiesPage() {
     }
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
-            <h1 className="mb-6 text-2xl font-semibold text-brand">Properties for sale</h1>
+            <h1 className="mb-6 text-2xl font-semibold text-brand">My Properties</h1>
             {content}
         </main>
     );

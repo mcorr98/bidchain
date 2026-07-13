@@ -46,5 +46,5 @@ export function featuresLine(bedrooms: number | null, bathrooms: number | null, 
         parts.push(receptions + " rec");
     }
 
-    return parts.join(" - ");
+    return parts.join(" · ");
 }
