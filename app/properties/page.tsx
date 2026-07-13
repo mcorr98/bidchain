@@ -1,31 +1,15 @@
 import pool from "@/lib/db";
 import Link from "next/link";
-import { ListingType, formatPrice, listingTypeLabel, featuresLine } from "@/lib/format";
+import { formatPrice, listingTypeLabel, featuresLine } from "@/lib/format"; 
+import { Property } from "@/lib/types";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 
-type Property = {
-    property_id: number,
-    vendor_id: number,
-    agent_id: number,
-    address_line_1: string,
-    address_line_2: string | null,
-    city: string,
-    postcode: string,
-    asking_price: number,
-    bedrooms: number | null,
-    bathrooms: number | null,
-    receptions: number | null,
-    description: string | null,
-    image_path: string | null,
-    listing_url: string | null,
-    listing_type: ListingType,
-    status: string,
-    state: string,
-    created_at: Date,
-    updated_at: Date
-}
 
+/**
+ * "Properties" page which can be viewed by a logged in bidder. It displays a grid of the properties they are currently invited to / participating in 
+ * @returns - proeprties page content HTML
+ */
 export default async function PropertiesPage() {
 
     const session = await auth();

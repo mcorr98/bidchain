@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { auth, signOut } from "@/auth";
 
+/**
+ * Header component be re-used across each page. The header conatins the logo + signout button 
+ * @returns HTML to display header 
+ */
 export default async function Header() {
     const session = await auth();
 
