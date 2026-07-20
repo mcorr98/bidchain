@@ -64,7 +64,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
     if (property.description === null) {
         descriptionLine = null;
     } else {
-        descriptionLine = <p className="max-w-prose">{property.description}</p>;
+        descriptionLine = <p className="max-w-prose line-clamp-4">{property.description}</p>;
     }
 
     const session = await auth();
@@ -151,7 +151,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                         <p className="text-gray-600">{property.city}, {property.postcode}</p>
                         <p className="text-sm text-gray-600">{featuresLine(property.bedrooms, property.bathrooms, property.receptions)}</p>
                     </div>
-                    {descriptionLine} 
+                    {descriptionLine}
                     {offersSection}
                 </div>
                 <div>

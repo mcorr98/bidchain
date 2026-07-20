@@ -7,8 +7,7 @@ import { createHash, randomBytes } from "crypto";
 export const GENESIS_HASH = "0".repeat(64);
 
 /**
- * The eleven event types. Kept as a const so the validator
- * and the hashing code share one source of truth.
+ * The eleven event types.
  */
 export type EventType =
     "LISTING_CREATED"
@@ -37,7 +36,7 @@ export type JsonValue =
     | { [key: string]: JsonValue };
 
 /**
- * Order fields will always be hashed in so that same date = same hash
+ * Order fields will always be hashed in so that same data = same hash
  */
 export interface EventPreimage {
     property_id: number;
@@ -45,7 +44,7 @@ export interface EventPreimage {
     event_type: EventType;
     actor_id: number;
     timestamp: string;
-    detail: JsonValue;
+    details: JsonValue;
     nonce: string;
     prev_hash: string;
 }
@@ -74,14 +73,29 @@ export function canonicalise(value: JsonValue): JsonValue {
 }
 
 /**
+ * Builds the frozen pre-image string
+ */
+export function buildPreimage(event: EventPreimage, canonicalDetails: string): string {
+    return [
+        String(event.property_id),
+        String(event.sequence),
+        event.event_type,
+        String(event.actor_id),
+        event.timestamp,
+        canonicalDetails,
+        event.nonce,
+        event.prev_hash,
+    ].join("|");
+}
+
+/**
  * Computes the SHA-256 hash of an event's preimage.
  */
-export function hashEvent(preimage: EventPreimage): string {
-    const canonicalPreimage = canonicalise(
-        preimage as unknown as JsonValue
-    );
-    const canonicalString = JSON.stringify(canonicalPreimage);
-    return createHash("sha256").update(canonicalString).digest("hex");
+export function hashEvent(event: EventPreimage): { hash: string; canonicalDetails: string } {
+    const canonicalDetails = JSON.stringify(canonicalise(event.details));
+    const preimage = buildPreimage(event, canonicalDetails);
+    const hash = createHash("sha256").update(preimage).digest("hex");
+    return { hash, canonicalDetails };
 }
 
 /**

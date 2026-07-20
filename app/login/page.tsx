@@ -21,7 +21,7 @@ export default async function LoginPage(props: LoginPageProps) {
             await signIn("credentials", {
                 email: formData.get("email"),
                 password: formData.get("password"),
-                redirectTo: "/properties",
+                redirectTo: "/",
             });
         } catch (error) {
             if (error instanceof AuthError) {
