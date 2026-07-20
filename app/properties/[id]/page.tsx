@@ -2,6 +2,10 @@ import pool from "@/lib/db";
 import { Property } from "@/lib/types";
 import { notFound } from "next/navigation";
 import { listingTypeLabel, formatPrice, featuresLine } from "@/lib/format";
+import BidForm from "@/components/bid-form";
+import { auth } from "@/auth";
+import { canBidOn } from "@/lib/permissions";
+
 
 type PropertyRouteParams = {
     id: string;
@@ -47,8 +51,25 @@ export default async function PropertyPage(props: PropertyPageProps) {
     let descriptionLine;
     if (property.description === null) {
         descriptionLine = null;
-    } else
+    } else {
         descriptionLine = <p className="max-w-prose">{property.description}</p>;
+    }
+
+    const session = await auth();
+
+    let canBid = false;
+    if (session !== null && session.user.role === "bidder") {
+        canBid = await canBidOn(property.property_id, Number(session.user.id));
+    }
+
+    let biddingSection;
+    if (canBid) {
+        biddingSection = <BidForm propertyId={property.property_id} />;
+    } else {
+        biddingSection = (
+            <p className="text-sm text-gray-500">Bidding is open to invited participants.</p>
+        );
+    }
 
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
@@ -66,9 +87,9 @@ export default async function PropertyPage(props: PropertyPageProps) {
                     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                         <p className="text-sm text-gray-500">{listingTypeLabel(property.listing_type)}</p>
                         <p className="text-3xl font-semibold text-brand">{formatPrice(property.asking_price)}</p>
-                        <p className="mt-4 border-t border-slate-200 pt-4 text-sm text-gray-500">
-                            Bidding is open to invited participants.
-                        </p>
+                        <div className="mt-4 border-t border-slate-200 pt-4">
+                            {biddingSection}
+                        </div>
                     </div>
                 </div>
             </div>
