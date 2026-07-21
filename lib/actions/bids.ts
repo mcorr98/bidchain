@@ -2,15 +2,17 @@
 import pool from "@/lib/db";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache"; 
+import { revalidatePath } from "next/cache";
 import { canBidOn } from "@/lib/permissions";
+import { hashEvent, makeNonce, GENESIS_HASH, EventPreimage } from "@/lib/chain";
+
 
 /**
  * Places a bid on a property. Writes to the chain only after input passes through validation stack:
  * 1. Session authenticated 
  * 2. Role is a "bidder" 
  * 3. Property exists and has an "open" state 
- * 4. Bidder is an invited participant on this property
+ * 4. Bidder is a joined participant on this property
  * 5. Amount is a positive whole number of pounds 
  * 
  * Amounts are entered in pounds and stored as integer pence.
@@ -61,18 +63,82 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
 
     const amountPence = pounds * 100;
 
-    let conditions = formData.get("conditions");
+    const conditionsRaw = formData.get("conditions");
 
-    if (conditions === "") {
+    let conditions: string | null;
+    if (typeof conditionsRaw === "string" && conditionsRaw !== "") {
+        conditions = conditionsRaw;
+    } else {
         conditions = null;
     }
 
-    const result = await pool.query(
-        `INSERT INTO offers (property_id, bidder_id, current_amount, conditions)
-     VALUES ($1, $2, $3, $4)
-     RETURNING offer_id`,
-        [propertyId, bidderId, amountPence, conditions]
-    );
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        await client.query(`SELECT property_id FROM properties WHERE property_id = $1 FOR UPDATE`, [propertyId]);
+
+        const tail = await client.query(
+            `SELECT sequence, hash
+            FROM events
+            WHERE property_id = $1
+            ORDER BY sequence DESC
+            LIMIT 1`,
+            [propertyId]
+        );
+
+        const offerInsert = await client.query(`INSERT INTO offers (property_id, bidder_id, current_amount, conditions, status, last_affirmed_at)
+            VALUES ($1, $2, $3, $4, $5, $6) 
+            RETURNING offer_id`,
+            [propertyId, bidderId, amountPence, conditions, "active", null]
+        );
+
+        let sequence: number;
+        let prevHash: string;
+
+        if (tail.rows.length === 0) {
+            sequence = 1;
+            prevHash = GENESIS_HASH;
+        } else {
+            sequence = tail.rows[0].sequence + 1;
+            prevHash = tail.rows[0].hash;
+        }
+
+        const timestamp = new Date().toISOString();
+        const details = {
+            amount: amountPence,
+            offer_id: offerInsert.rows[0].offer_id,
+            conditions: conditions,
+        }
+        const nonce = makeNonce();
+        const preimage: EventPreimage = {
+            property_id: propertyId,
+            sequence,
+            event_type: "BID_PLACED",
+            actor_id: bidderId,
+            timestamp,
+            details,
+            nonce,
+            prev_hash: prevHash,
+        };
+
+        const { hash, canonicalDetails } = hashEvent(preimage);
+        await client.query(
+            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [propertyId, sequence, preimage.event_type, bidderId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
+        );
+
+        await client.query("COMMIT");
+
+    } catch (err) {
+        console.error("placeBid transaction failed:", err)
+        await client.query("ROLLBACK");
+        return { error: "Something went wrong placing your bid" }
+    } finally {
+        client.release();
+    }
 
     revalidatePath(`/properties/${propertyId}`);
     return { success: true };
