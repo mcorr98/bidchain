@@ -1,4 +1,5 @@
 import { ListingType } from "./types"; 
+import { EventType } from "./chain";
 
 /**
  * Formats prices from being represented as pence into being represented as pounds
@@ -64,4 +65,21 @@ export function featuresLine(bedrooms: number | null, bathrooms: number | null, 
     }
 
     return parts.join(" · ");
+}
+
+export function eventTypeLabel(eventType: EventType): string {
+    if (eventType === "LISTING_CREATED") return "Listing created";
+    else if (eventType === "BID_PLACED") return "Bid placed";
+    else if (eventType === "BID_REVISED") return "Bid revised";
+    else if (eventType === "BID_WITHDRAWN") return "Bid withdrawn";
+    else if (eventType === "BID_RECONFIRMED") return "Bid reconfirmed";
+    else if (eventType === "BID_ACCEPTED") return "Bid accepted";
+    else if (eventType === "BIDDING_CLOSED") return "Bidding closed";
+    else if (eventType === "BIDDING_REOPENED") return "Bidding reopened";
+    else if (eventType === "LISTING_WITHDRAWN") return "Listing withdrawn";
+    else if (eventType === "SALE_COLLAPSED") return "Sale collapsed";
+    else if (eventType === "PROPERTY_RELISTED") return "Property relisted";
+
+    const unhandled: never = eventType;
+    throw new Error("Unhandled event type: " + unhandled);
 }

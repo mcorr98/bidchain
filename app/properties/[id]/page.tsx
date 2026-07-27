@@ -5,8 +5,8 @@ import { listingTypeLabel, formatPrice, featuresLine } from "@/lib/format";
 import BidForm from "@/components/bid-form";
 import { auth } from "@/auth";
 import { canBidOn, canViewOffers } from "@/lib/permissions";
-import { Timestamp } from "next/dist/server/lib/cache-handlers/types";
-
+import { EventRow, verifyChain } from "@/lib/chain";
+import { eventTypeLabel } from "@/lib/format";
 
 type PropertyRouteParams = {
     id: string;
@@ -18,9 +18,9 @@ type PropertyPageProps = {
 type OfferRow = {
     offer_id: number,
     current_amount: number,
-    conditions: string,
+    conditions: string | null,
     status: string,
-    created_at: Timestamp,
+    created_at: Date,
     name: string
 
 }
@@ -111,7 +111,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                 <ul className="divide-y divide-slate-200">
                     {offers.map((offer) => {
                         let conditionsLine = null;
-                        if (offer.conditions != null) {
+                        if (offer.conditions !== null) {
                             conditionsLine = (
                                 <p className="text-sm text-gray-500">{offer.conditions}</p>
                             );
@@ -141,6 +141,70 @@ export default async function PropertyPage(props: PropertyPageProps) {
         );
     }
 
+    const eventsResult = await pool.query<EventRow & { actor_name: string }>(
+        `SELECT e.property_id, e.sequence, e.event_type, e.actor_id, e.timestamp, e.details, e.canonical_details, e.nonce, e.hash, e.prev_hash, u.name AS actor_name 
+        FROM events e 
+        JOIN users u ON u.user_id = e.actor_id
+        WHERE e.property_id = $1
+        ORDER BY e.sequence ASC`,
+        [propertyId]
+    );
+
+    const events = eventsResult.rows;
+    const verification = verifyChain(events);
+
+    let chainSection = null;
+    if (canSeeChain) {
+        let badge;
+        if (verification.valid) {
+            badge = (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-3 py-1 text-sm font-medium text-verified">
+                    Chain verified · {verification.eventCount} events
+                </span>
+            );
+        } else {
+            badge = (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-700">
+                    Integrity check failed at event {verification.failures[0].sequence}
+                </span>
+            );
+        }
+
+        chainSection = (
+            <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Event record</h2>
+                    {badge}
+                </div>
+                <ol className="border-l-2 border-slate-200 pl-4">
+                    {events.map((event) => {
+                        let amountLine = null;
+                        if (event.details !== null && typeof event.details === "object" && !Array.isArray(event.details) && typeof event.details.amount === "number") {
+                            amountLine = (
+                                <p className="text-sm font-medium text-brand">
+                                    {formatPrice(event.details.amount)}
+                                </p>
+                            );
+                        }
+                        return (
+                            <li key={event.sequence} className="relative pb-4">
+                                <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-verified" />
+                                <p className="text-sm font-medium">
+                                    {eventTypeLabel(event.event_type)}
+                                    <span className="ml-2 font-normal text-gray-500">#{event.sequence}</span>
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                    {event.actor_name} · {event.timestamp.toLocaleDateString("en-GB")}
+                                </p>
+                                {amountLine}
+                            </li>
+                        );
+                    })}
+                </ol>
+            </div>
+        );
+    }
+
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
             <img src={imageSrc} className="h-96 w-full object-cover rounded-xl" alt={property.address_line_1 + ", " + property.city} />
@@ -153,6 +217,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                     </div>
                     {descriptionLine}
                     {offersSection}
+                    {chainSection}
                 </div>
                 <div>
                     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
