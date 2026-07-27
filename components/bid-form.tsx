@@ -28,7 +28,7 @@ export default function BidForm(props: BidFormProps) {
 
     let buttonLabel;
     if (pending) {
-        buttonLabel = "Placing bid…";
+        buttonLabel = "Placing bid...";
     } else {
         buttonLabel = "Place bid";
     }

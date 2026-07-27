@@ -8,6 +8,7 @@ import { canBidOn, canManageProperty, canViewOffers } from "@/lib/permissions";
 import { EventRow, verifyChain } from "@/lib/chain";
 import { eventTypeLabel } from "@/lib/format";
 import InvitationForm from "@/components/invite-participants-form"
+import CloseBiddingButton from "@/components/close-bidding-button";
 
 type PropertyRouteParams = {
     id: string;
@@ -96,8 +97,10 @@ export default async function PropertyPage(props: PropertyPageProps) {
         actionSection = <BidForm propertyId={property.property_id} />;
     } else if (session?.user.role === "bidder") {
         actionSection = <p className="text-sm text-gray-500">Bidding is open to invited participants.</p>;
-    } else if (isManaging) {
+    } else if (isManaging && property.state === "open") {
         actionSection = <InvitationForm propertyId={property.property_id} />;
+    } else if (isManaging) {
+        actionSection = <p className="text-sm text-gray-500">Bidding is {property.state}.</p>;
     } else if (session?.user.role === "agent") {
         actionSection = <p className="text-sm text-gray-500">You don't manage this property.</p>;
     }
@@ -222,57 +225,72 @@ export default async function PropertyPage(props: PropertyPageProps) {
                     })}
                 </ol>
             </div>
-        ); 
+        );
     }
 
-        let participants: ParticipantRow[] = [];
-        if (isManaging) {
-            const participantResult = await pool.query<ParticipantRow>(
-                `SELECT pp.participant_id, u.name, u.email, pp.status
+    let participants: ParticipantRow[] = [];
+    if (isManaging) {
+        const participantResult = await pool.query<ParticipantRow>(
+            `SELECT pp.participant_id, u.name, u.email, pp.status
                 FROM property_participants pp
                 JOIN users u ON u.user_id = pp.user_id
                 WHERE pp.property_id = $1
                 ORDER BY pp.status, u.name`,
-                [propertyId]
-            );
-            participants = participantResult.rows;
-        }
+            [propertyId]
+        );
+        participants = participantResult.rows;
+    }
 
-        // Participant section (agent view only)
-        let participantSection = null;
-        if (isManaging) {
-            let participantList;
-            if (participants.length === 0) {
-                participantList = (
-                    <p className="text-sm text-gray-500">No participants yet. Invite a bidder to get started.</p>
-                );
-            } else {
-                participantList = (
-                    <ul className="divide-y divide-slate-200">
-                        {participants.map((participant) => {
-                            return (
-                                <li key={participant.participant_id} className="flex items-center justify-between py-2">
-                                    <div>
-                                        <p className="text-sm font-medium text-ink">{participant.name}</p>
-                                        <p className="text-sm text-gray-500">{participant.email}</p>
-                                    </div>
-                                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs uppercase tracking-wide text-gray-600">
-                                        {participant.status}
-                                    </span>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                )
-            }
-            participantSection = (
-                <div className="space-y-2">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Participants</h2>
-                    {participantList}
-                </div>
+    // Participant section (agent view only)
+    let participantSection = null;
+    if (isManaging) {
+        let participantList;
+        if (participants.length === 0) {
+            participantList = (
+                <p className="text-sm text-gray-500">No participants yet. Invite a bidder to get started.</p>
             );
-
+        } else {
+            participantList = (
+                <ul className="divide-y divide-slate-200">
+                    {participants.map((participant) => {
+                        return (
+                            <li key={participant.participant_id} className="flex items-center justify-between py-2">
+                                <div>
+                                    <p className="text-sm font-medium text-ink">{participant.name}</p>
+                                    <p className="text-sm text-gray-500">{participant.email}</p>
+                                </div>
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs uppercase tracking-wide text-gray-600">
+                                    {participant.status}
+                                </span>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )
         }
+        participantSection = (
+            <div className="space-y-2">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Participants</h2>
+                {participantList}
+            </div>
+        );
+
+    }
+
+    //Close bidding
+    let closeControl = null;
+    if (isManaging && property.state === "open") {
+        closeControl = <CloseBiddingButton propertyId={property.property_id} />;
+    }
+
+    let stateBadge = null;
+    if (property.state !== "open") {
+        stateBadge = (
+            <span className="inline-flex items-center rounded-full bg-gray-200 px-3 py-1 text-xs font-medium uppercase tracking-wide text-gray-700">
+                Bidding {property.state}
+            </span>
+        );
+    }
 
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
@@ -280,7 +298,10 @@ export default async function PropertyPage(props: PropertyPageProps) {
             <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
                     <div className="space-y-1">
-                        <h1 className="text-2xl font-semibold text-brand">{addressLine}</h1>
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-2xl font-semibold text-brand">{addressLine}</h1>
+                            {stateBadge}
+                        </div>
                         <p className="text-gray-600">{property.city}, {property.postcode}</p>
                         <p className="text-sm text-gray-600">{featuresLine(property.bedrooms, property.bathrooms, property.receptions)}</p>
                     </div>
@@ -288,6 +309,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                     {offersSection}
                     {chainSection}
                     {participantSection}
+                    {closeControl}
                 </div>
                 <div>
                     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
