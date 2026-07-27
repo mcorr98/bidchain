@@ -5,7 +5,7 @@ import pool from "@/lib/db";
 import { canManageProperty } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 
-export async function inviteBidder(propertyId: number, formData: FormData) {
+export async function inviteBidder(propertyId: number, _previousState: unknown, formData: FormData) {
 
     const session = await auth();
 
