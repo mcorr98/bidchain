@@ -177,7 +177,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                     {badge}
                 </div>
                 <ol className="border-l-2 border-slate-200 pl-4">
-                    {events.map((event) => {
+                    { events.map((event) => {
                         let amountLine = null;
                         if (event.details !== null && typeof event.details === "object" && !Array.isArray(event.details) && typeof event.details.amount === "number") {
                             amountLine = (

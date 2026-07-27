@@ -36,11 +36,18 @@ export async function canViewOffers(propertyId: number, userId: number): Promise
         [propertyId, userId, "joined"]
     );
 
+    const isAssignedAgent = await canManageProperty(propertyId, userId);
+
+    return hasRows(bidderResult) || isAssignedAgent;
+}  
+
+export async function canManageProperty(propertyId: number, userId: number): Promise<boolean> {
+    
     const agentResult = await pool.query(
         `SELECT property_id FROM properties 
         WHERE property_id = $1 AND agent_id = $2`,
         [propertyId, userId]
     );
 
-    return hasRows(bidderResult) || hasRows(agentResult);
-} 
+    return hasRows(agentResult);
+}
