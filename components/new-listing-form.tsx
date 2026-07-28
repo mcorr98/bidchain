@@ -16,7 +16,7 @@ export default function NewListingForm() {
 
     let buttonLabel;
     if (pending) {
-        buttonLabel = "Creating listing…";
+        buttonLabel = "Creating listing...";
     } else {
         buttonLabel = "Create listing";
     }
@@ -60,7 +60,7 @@ export default function NewListingForm() {
                 <label className="block text-sm font-medium">
                     Listing type
                     <select name="listing_type" required defaultValue="" className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2">
-                        <option value="" disabled>Choose…</option>
+                        <option value="" disabled>Choose...</option>
                         <option value="offers_over">Offers over</option>
                         <option value="offers_around">Offers around</option>
                         <option value="fixed_price">Fixed price</option>

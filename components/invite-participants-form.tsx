@@ -28,7 +28,7 @@ export default function InvitationForm(props: InvitationFormProps) {
 
     let buttonLabel;
     if (pending) {
-        buttonLabel = "Inviting bidder…";
+        buttonLabel = "Inviting bidder...";
     } else {
         buttonLabel = "Invite bidder";
     }
