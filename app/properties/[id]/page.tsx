@@ -93,8 +93,10 @@ export default async function PropertyPage(props: PropertyPageProps) {
 
     //Action panel - bid / invite bidders. Likely to change when I refactor agent views 
     let actionSection;
-    if (canBid) {
+    if (canBid && property.state === "open") {
         actionSection = <BidForm propertyId={property.property_id} />;
+    } else if (session?.user.role === "bidder" && property.state !== "open") {
+        actionSection = <p className="text-sm text-gray-500">Bidding is closed.</p>;
     } else if (session?.user.role === "bidder") {
         actionSection = <p className="text-sm text-gray-500">Bidding is open to invited participants.</p>;
     } else if (isManaging && property.state === "open") {
