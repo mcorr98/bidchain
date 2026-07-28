@@ -85,10 +85,25 @@ export default async function PropertyPage(props: PropertyPageProps) {
     if (session?.user.role === "bidder") {
         canBid = await canBidOn(property.property_id, userId);
     }
-
     let isManaging = false;
     if (session?.user.role === "agent") {
         isManaging = await canManageProperty(property.property_id, userId);
+    }
+
+    // Property image 
+    let imageArea;
+    if (property.image_path === null) {
+        imageArea = (
+            <div className="flex h-48 w-full items-center justify-center bg-slate-100">
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Photo to follow
+                </span>
+            </div>
+        );
+    } else {
+        imageArea = (
+            <img src={property.image_path} alt={property.address_line_1 + ", " + property.city} className="h-96 w-full object-cover rounded-xl" />
+        );
     }
 
     //Action panel - bid / invite bidders. Likely to change when I refactor agent views 
@@ -296,7 +311,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
 
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
-            <img src={imageSrc} className="h-96 w-full object-cover rounded-xl" alt={property.address_line_1 + ", " + property.city} />
+            {imageArea}
             <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
                     <div className="space-y-1">
