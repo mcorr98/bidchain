@@ -9,5 +9,8 @@ export default async function Home() {
   if (session.user.role === "agent") {
     redirect("/agent/listings");
   }
+  if (session.user.role === "vendor") {
+    redirect("/vendor/properties");
+  }
   redirect("/properties");
 }

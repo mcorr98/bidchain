@@ -60,6 +60,13 @@ export default async function Header() {
             </Link>
             {accountArea}
         </nav>
+    } else if (session?.user.role === "vendor") {
+        propertiesLink = <nav className="flex items-center gap-6">
+            <Link href="/vendor/properties" className="px-1 py-1.5 text-sm text-gray-700 hover:text-gray-900">
+                My bids
+            </Link>
+            {accountArea}
+        </nav>
     }
 
     return (
