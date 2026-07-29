@@ -4,11 +4,12 @@ import { notFound } from "next/navigation";
 import { listingTypeLabel, formatPrice, featuresLine } from "@/lib/format";
 import BidForm from "@/components/bid-form";
 import { auth } from "@/auth";
-import { canBidOn, canManageProperty, canViewOffers } from "@/lib/permissions";
+import { canBidOn, canManageProperty, canViewOffers, isPropertyVendor } from "@/lib/permissions";
 import { EventRow, verifyChain } from "@/lib/chain";
 import { eventTypeLabel } from "@/lib/format";
 import InvitationForm from "@/components/invite-participants-form"
 import CloseBiddingButton from "@/components/close-bidding-button";
+import AcceptBidButton from "@/components/accept-bid-button";
 
 type PropertyRouteParams = {
     id: string;
@@ -89,6 +90,10 @@ export default async function PropertyPage(props: PropertyPageProps) {
     if (session?.user.role === "agent") {
         isManaging = await canManageProperty(property.property_id, userId);
     }
+    let isVendor = false;
+    if (session?.user.role === "vendor") {
+        isVendor = await isPropertyVendor(property.property_id, userId);
+    }
 
     // Property image 
     let imageArea;
@@ -122,7 +127,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
         actionSection = <p className="text-sm text-gray-500">You don't manage this property.</p>;
     }
 
-    // Bidding chain section 
+    // Offers section 
     let canSeeChain = false;
     if (session !== null) {
         canSeeChain = await canViewOffers(property.property_id, Number(session.user.id))
@@ -155,15 +160,26 @@ export default async function PropertyPage(props: PropertyPageProps) {
                                 <p className="text-sm text-gray-500">{offer.conditions}</p>
                             );
                         }
+
+                        let acceptControl = null;
+                        if (isVendor && property.state === "closed") {
+                            acceptControl = (
+                                <AcceptBidButton propertyId={property.property_id} offerId={offer.offer_id} />
+                            );
+                        }
+                        console.log("isVendor:", isVendor, "state:", property.state)
                         return (
                             <li key={offer.offer_id} className="flex items-start justify-between py-3">
                                 <div>
                                     <p className="font-medium text-ink">{offer.name}</p>
                                     {conditionsLine}
                                 </div>
-                                <p className="text-lg font-semibold text-brand">
-                                    {formatPrice(offer.current_amount)}
-                                </p>
+                                <div className="flex items-center gap-3">
+                                    <p className="text-lg font-semibold text-brand">
+                                        {formatPrice(offer.current_amount)}
+                                    </p>
+                                    {acceptControl}
+                                </div>
                             </li>
                         );
                     })}
@@ -180,6 +196,10 @@ export default async function PropertyPage(props: PropertyPageProps) {
         );
     }
 
+
+
+
+    //Chain section
     const eventsResult = await pool.query<EventRow & { actor_name: string }>(
         `SELECT e.property_id, e.sequence, e.event_type, e.actor_id, e.timestamp, e.details, e.canonical_details, e.nonce, e.hash, e.prev_hash, u.name AS actor_name 
         FROM events e 
@@ -189,7 +209,6 @@ export default async function PropertyPage(props: PropertyPageProps) {
         [propertyId]
     );
 
-    // Chain verification badge
     const events = eventsResult.rows;
     const verification = verifyChain(events);
 

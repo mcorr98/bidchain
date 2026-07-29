@@ -1,14 +1,15 @@
 "use server"
 import { auth } from "@/auth";
-import { canManageProperty } from "@/lib/permissions";
+import { canManageProperty, isPropertyVendor } from "@/lib/permissions";
 import pool from "@/lib/db";
 import { GENESIS_HASH, makeNonce, EventPreimage, hashEvent } from "@/lib/chain";
 import { revalidatePath } from "next/cache";
 import { BiddingState } from "@/lib/types";
 import { redirect } from "next/navigation";
-import { ListingType } from "@/lib/types";
+import { ListingType } from "@/lib/types"; 
 
 type ParsedOptionalWholeNumber = number | null | "invalid";
+
 /**
  * Closes bidding on a property, preventing further bids
  * @param propertyId - property in question 
@@ -256,4 +257,123 @@ function parseOptionalWholeNumber(value: FormDataEntryValue | null): ParsedOptio
         return "invalid";
     }
     return parsed;
+}
+
+export async function acceptBid(propertyId: number, offerId: number, _previousState: unknown, formData: FormData) {
+
+    const session = await auth();
+
+    if (!session) {
+        redirect("/login");
+    }
+
+    if (session.user.role !== "vendor") {
+        return { error: "Only the vendor can accept an offer" };
+    }
+
+    const vendorId = Number(session.user.id);
+
+    if (!(await isPropertyVendor(propertyId, vendorId))) {
+        return { error: "You are not the vendor for this property" };
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const locked = await client.query<{ state: BiddingState }>(
+            `SELECT state FROM properties WHERE property_id = $1 FOR UPDATE`,
+            [propertyId]
+        );
+
+        if (locked.rows[0].state !== "closed") {
+            await client.query("ROLLBACK");
+            return { error: "Offers can only be accepted once bidding has closed" };
+        }
+
+        const offerCheck = await client.query<{ current_amount: number }>(
+            `SELECT current_amount FROM offers
+             WHERE offer_id = $1 AND property_id = $2 AND status = $3`,
+            [offerId, propertyId, "active"]
+        );
+
+        if (offerCheck.rows.length === 0) {
+            await client.query("ROLLBACK");
+            return { error: "That offer is no longer available" };
+        }
+
+        const acceptedAmount = offerCheck.rows[0].current_amount;
+
+        const tail = await client.query(
+            `SELECT sequence, hash FROM events
+             WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
+            [propertyId]
+        );
+
+        let sequence: number;
+        let prevHash: string;
+
+        if (tail.rows.length === 0) {
+            sequence = 1;
+            prevHash = GENESIS_HASH;
+        } else {
+            sequence = tail.rows[0].sequence + 1;
+            prevHash = tail.rows[0].hash;
+        }
+
+        const timestamp = new Date().toISOString();
+        const details = {
+            offer_id: offerId,
+            amount: acceptedAmount,
+        };
+        const nonce = makeNonce();
+        const preimage: EventPreimage = {
+            property_id: propertyId,
+            sequence,
+            event_type: "BID_ACCEPTED",
+            actor_id: vendorId,
+            timestamp,
+            details,
+            nonce,
+            prev_hash: prevHash,
+        };
+
+        const { hash, canonicalDetails } = hashEvent(preimage);
+
+        await client.query(
+            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [propertyId, sequence, "BID_ACCEPTED", vendorId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
+        );
+
+        await client.query(
+            `UPDATE offers SET status = $1, updated_at = NOW() WHERE offer_id = $2`,
+            ["accepted", offerId]
+        );
+
+        await client.query(
+            `UPDATE offers SET status = $1, updated_at = NOW()
+             WHERE property_id = $2 AND status = $3 AND offer_id != $4`,
+            ["expired", propertyId, "active", offerId]
+        );
+
+        await client.query(
+            `UPDATE properties SET state = $1, updated_at = NOW()
+             WHERE property_id = $2`,
+            ["sale_agreed", propertyId]
+        );
+
+        await client.query("COMMIT");
+
+    } catch (err) {
+        console.error("acceptBid transaction failed:", err);
+        await client.query("ROLLBACK");
+        return { error: "Something went wrong accepting the offer" };
+    } finally {
+        client.release();
+    }
+
+    revalidatePath(`/properties/${propertyId}`);
+    return { success: true };
 }
