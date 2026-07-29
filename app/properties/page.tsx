@@ -31,11 +31,20 @@ export default async function PropertiesPage() {
     } else {
         content = <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {properties.map((property) => {
-                let imageSrc;
+                let imageArea;
                 if (property.image_path === null) {
-                    imageSrc = "/placeholder.jpg";
+                    imageArea = (
+                        <div className="flex h-48 w-full items-center justify-center bg-slate-100">
+                            <span className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                                Photo to follow
+                            </span>
+                        </div>
+                    );
                 } else {
-                    imageSrc = property.image_path;
+                    imageArea = (
+                        <img src={property.image_path} alt={property.address_line_1 + ", " + property.city}
+                            className="h-48 w-full object-cover" />
+                    );
                 }
 
                 let stateBadge = null;
@@ -48,13 +57,9 @@ export default async function PropertiesPage() {
                 }
 
                 return (
-                    <Link
-                        key={property.property_id}
-                        href={`/properties/${property.property_id}`}
-                        className="block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
-                    >
+                    <Link key={property.property_id} href={`/properties/${property.property_id}`} className="block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                         <div className="relative">
-                            <img src={imageSrc} alt={property.address_line_1 + ", " + property.city} className="h-48 w-full object-cover" />
+                            {imageArea}
                             {stateBadge}
                         </div>
                         <div className="p-4">
