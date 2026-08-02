@@ -5,6 +5,7 @@ import Link from "next/link";
 
 type LoginSearchParams = {
     error?: string;
+    next?: string;
 };
 
 type LoginPageProps = {
@@ -14,6 +15,13 @@ type LoginPageProps = {
 export default async function LoginPage(props: LoginPageProps) {
     const params = await props.searchParams;
 
+    let redirectTarget = "/";
+    if (typeof params.next === "string" && params.next.startsWith("/")) {
+        redirectTarget = params.next;
+    }
+
+    const encodedNext = encodeURIComponent(redirectTarget);
+
     async function handleLogin(formData: FormData) {
         "use server";
 
@@ -21,11 +29,11 @@ export default async function LoginPage(props: LoginPageProps) {
             await signIn("credentials", {
                 email: formData.get("email"),
                 password: formData.get("password"),
-                redirectTo: "/",
+                redirectTo: redirectTarget,
             });
         } catch (error) {
             if (error instanceof AuthError) {
-                redirect("/login?error=1");
+                redirect(`/login?error=1&next=${encodedNext}`);
             }
             throw error;
         }
@@ -71,17 +79,14 @@ export default async function LoginPage(props: LoginPageProps) {
                             />
                         </label>
 
-                        <button
-                            type="submit"
-                            className="w-full rounded bg-action px-4 py-2 font-medium text-white hover:bg-action-strong"
-                        >
+                        <button type="submit" className="w-full rounded bg-action px-4 py-2 font-medium text-white hover:bg-action-strong">
                             Log in
                         </button>
                     </form>
 
                     <p className="mt-6 text-sm text-gray-600">
                         No account yet?{" "}
-                        <Link href="/register" className="underline">
+                        <Link href={`/register?next=%{encodedNext}`} className="underline">
                             Register as a buyer
                         </Link>
                     </p>
