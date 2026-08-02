@@ -20,9 +20,18 @@ export default function InvitationForm(props: InvitationFormProps) {
         );
     } else if (state !== null && "success" in state) {
         feedback = (
-            <p className="rounded border border-teal-300 bg-teal-50 px-3 py-2 text-sm text-teal-800">
-                Bidder invited to property.
-            </p>
+            <div className="rounded border border-teal-300 bg-teal-50 px-3 py-2 text-sm">
+                <p className="mb-2 font-medium text-teal-800">Invitation created</p>
+                <p className="mb-2 text-xs text-teal-700">
+                    Send this link to the bidder. It can be used once and expires in 7 days.
+                </p>
+                <input
+                    readOnly
+                    value={state.link}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full rounded border border-teal-300 bg-white px-2 py-1 font-mono text-xs"
+                />
+            </div>
         );
     }
 

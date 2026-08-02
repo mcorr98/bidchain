@@ -27,8 +27,7 @@ export default function AcceptBidButton(props: AcceptBidButtonProps) {
 
     return (
         <form action={action}>
-            <button type="submit" disabled={pending}
-                className="rounded bg-action px-3 py-1 text-sm font-medium text-white hover:bg-action-strong disabled:opacity-50">
+            <button type="submit" disabled={pending} className="rounded bg-action px-3 py-1 text-sm font-medium text-white hover:bg-action-strong disabled:opacity-50">
                 {buttonLabel}
             </button>
             {feedback}

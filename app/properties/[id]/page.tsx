@@ -196,10 +196,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
         );
     }
 
-
-
-
-    //Chain section
+    // Chain section
     const eventsResult = await pool.query<EventRow & { actor_name: string }>(
         `SELECT e.property_id, e.sequence, e.event_type, e.actor_id, e.timestamp, e.details, e.canonical_details, e.nonce, e.hash, e.prev_hash, u.name AS actor_name 
         FROM events e 
