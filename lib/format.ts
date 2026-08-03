@@ -79,6 +79,8 @@ export function eventTypeLabel(eventType: EventType): string {
     else if (eventType === "LISTING_WITHDRAWN") return "Listing withdrawn";
     else if (eventType === "SALE_COLLAPSED") return "Sale collapsed";
     else if (eventType === "PROPERTY_RELISTED") return "Property relisted";
+    else if (eventType === "SALE_COMPLETED") return "Sale Completed";
+;
 
     const unhandled: never = eventType;
     throw new Error("Unhandled event type: " + unhandled);

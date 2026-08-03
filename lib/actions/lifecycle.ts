@@ -377,3 +377,95 @@ export async function acceptBid(propertyId: number, offerId: number, _previousSt
     revalidatePath(`/properties/${propertyId}`);
     return { success: true };
 }
+
+export async function completeSale(propertyId: number, _previousState: unknown, formData: FormData) {
+
+    const session = await auth();
+    
+    if (!session) {
+        redirect("/login");
+    }
+
+    if (session.user.role !== "agent") {
+        return { error: "Only agents can mark a sale complete" };
+    }
+
+    const agentId = Number(session.user.id);
+
+    if (!(await canManageProperty(propertyId, agentId))) {
+        return { error: "You don't manage this property" };
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const locked = await client.query<{ state: BiddingState }>(
+            `SELECT state FROM properties WHERE property_id = $1 FOR UPDATE`,
+            [propertyId]
+        );
+
+        if (locked.rows[0].state !== "sale_agreed") {
+            await client.query("ROLLBACK");
+            return { error: "Only a sale-agreed property can be completed" };
+        }
+
+        const tail = await client.query(
+            `SELECT sequence, hash FROM events
+            WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
+            [propertyId]
+        );
+
+        let sequence: number;
+        let prevHash: string;
+
+        if (tail.rows.length === 0) {
+            sequence = 1;
+            prevHash = GENESIS_HASH;
+        } else {
+            sequence = tail.rows[0].sequence + 1;
+            prevHash = tail.rows[0].hash;
+        }
+
+        const timestamp = new Date().toISOString();
+        const details = {};
+        const nonce = makeNonce();
+        const preimage: EventPreimage = {
+            property_id: propertyId,
+            sequence,
+            event_type: "SALE_COMPLETED",
+            actor_id: agentId,
+            timestamp,
+            details,
+            nonce,
+            prev_hash: prevHash,
+        };
+
+        const { hash, canonicalDetails } = hashEvent(preimage);
+
+        await client.query(
+            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [propertyId, sequence, "SALE_COMPLETED", agentId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
+        );
+
+        await client.query(
+            `UPDATE properties SET state = $1, status = $2, updated_at = NOW()
+             WHERE property_id = $3`,
+            ["completed", "sold", propertyId]
+        );
+
+        await client.query("COMMIT");
+
+    } catch (err) {
+        console.error("completeSale transaction failed:", err);
+        await client.query("ROLLBACK");
+        return { error: "Something went wrong completing the sale" };
+    } finally {
+        client.release();
+    }
+
+    revalidatePath(`/properties/${propertyId}`);
+    return { success: true };
+}

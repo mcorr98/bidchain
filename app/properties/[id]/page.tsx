@@ -9,7 +9,8 @@ import { EventRow, verifyChain } from "@/lib/chain";
 import { eventTypeLabel } from "@/lib/format";
 import InvitationForm from "@/components/invite-participants-form"
 import CloseBiddingButton from "@/components/close-bidding-button";
-import AcceptBidButton from "@/components/accept-bid-button";
+import AcceptBidButton from "@/components/accept-bid-button"; 
+import CompleteSaleButton from "@/components/complete-sale-button";
 
 type PropertyRouteParams = {
     id: string;
@@ -325,6 +326,14 @@ export default async function PropertyPage(props: PropertyPageProps) {
         );
     }
 
+    // Complete sale 
+    let completeControl = null;
+    if (isManaging && property.state === "sale_agreed") {
+        completeControl = <CompleteSaleButton propertyId={property.property_id} />;
+    }
+
+    console.log("isManaging:", isManaging, "state:", property.state);
+
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
             {imageArea}
@@ -342,7 +351,8 @@ export default async function PropertyPage(props: PropertyPageProps) {
                     {offersSection}
                     {chainSection}
                     {participantSection}
-                    {closeControl}
+                    {closeControl} 
+                    {completeControl}
                 </div>
                 <div>
                     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

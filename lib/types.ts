@@ -3,12 +3,13 @@
  * property.status in schema 
  */
 
-export type PropertyStatus = "active" | "sale_agreed" | "withdrawn" | "sold" | "relisted";  
+export type PropertyStatus = "active" | "sale_agreed" | "withdrawn" | "sold" | "relisted";   
+
 /**
  * Stage of the bidding process
  * property.state in the schema 
  */
-export type BiddingState = "open" | "closed"| "sale_agreed"| "collapsed"| "withdrawn"; 
+export type BiddingState = "open" | "closed"| "sale_agreed"| "collapsed"| "withdrawn" | "completed"; 
 
 /**
  * Types of offers the vendor indicates they're fielding on the listing 

@@ -31,7 +31,8 @@ export type EventType =
     | "BIDDING_REOPENED"
     | "LISTING_WITHDRAWN"
     | "SALE_COLLAPSED"
-    | "PROPERTY_RELISTED";
+    | "PROPERTY_RELISTED"
+    | "SALE_COMPLETED";
 
 
 /**
