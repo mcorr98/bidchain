@@ -9,8 +9,9 @@ import { EventRow, verifyChain } from "@/lib/chain";
 import { eventTypeLabel } from "@/lib/format";
 import InvitationForm from "@/components/invite-participants-form"
 import CloseBiddingButton from "@/components/close-bidding-button";
-import AcceptBidButton from "@/components/accept-bid-button"; 
+import AcceptBidButton from "@/components/accept-bid-button";
 import CompleteSaleButton from "@/components/complete-sale-button";
+import WithdrawBidButton from "@/components/withdraw-bid-button";
 
 type PropertyRouteParams = {
     id: string;
@@ -20,6 +21,7 @@ type PropertyPageProps = {
 }
 
 type OfferRow = {
+    bidder_id: number,
     offer_id: number,
     current_amount: number,
     conditions: string | null,
@@ -58,12 +60,6 @@ export default async function PropertyPage(props: PropertyPageProps) {
     }
 
     // Property details 
-    let imageSrc;
-    if (property.image_path === null) {
-        imageSrc = "/placeholder.jpg";
-    } else {
-        imageSrc = property.image_path;
-    }
 
     let addressLine;
     if (property.address_line_2 === null) {
@@ -135,7 +131,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
     }
 
     let offersResult = await pool.query<OfferRow>(`
-        SELECT o.offer_id, o.current_amount, o.conditions, o.status, o.created_at, u.name
+        SELECT o.offer_id, o.current_amount, o.conditions, o.status, o.created_at, o.bidder_id, u.name
         FROM offers o
         JOIN users u ON u.user_id = o.bidder_id
         WHERE o.property_id = $1 AND o.status = 'active'
@@ -168,12 +164,17 @@ export default async function PropertyPage(props: PropertyPageProps) {
                                 <AcceptBidButton propertyId={property.property_id} offerId={offer.offer_id} />
                             );
                         }
-                        console.log("isVendor:", isVendor, "state:", property.state)
+
+                        let withdrawControl = null;
+                        if (session?.user.role === "bidder" && offer.bidder_id === userId && (property.state === "open" || property.state === "closed")) {
+                            withdrawControl = <WithdrawBidButton propertyId={property.property_id} offerId={offer.offer_id} />;
+                        }
                         return (
                             <li key={offer.offer_id} className="flex items-start justify-between py-3">
                                 <div>
                                     <p className="font-medium text-ink">{offer.name}</p>
                                     {conditionsLine}
+                                    {withdrawControl}
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <p className="text-lg font-semibold text-brand">
@@ -332,8 +333,6 @@ export default async function PropertyPage(props: PropertyPageProps) {
         completeControl = <CompleteSaleButton propertyId={property.property_id} />;
     }
 
-    console.log("isManaging:", isManaging, "state:", property.state);
-
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
             {imageArea}
@@ -351,7 +350,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                     {offersSection}
                     {chainSection}
                     {participantSection}
-                    {closeControl} 
+                    {closeControl}
                     {completeControl}
                 </div>
                 <div>
