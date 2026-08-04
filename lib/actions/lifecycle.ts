@@ -6,7 +6,7 @@ import { GENESIS_HASH, makeNonce, EventPreimage, hashEvent } from "@/lib/chain";
 import { revalidatePath } from "next/cache";
 import { BiddingState } from "@/lib/types";
 import { redirect } from "next/navigation";
-import { ListingType } from "@/lib/types"; 
+import { ListingType } from "@/lib/types";
 
 type ParsedOptionalWholeNumber = number | null | "invalid";
 
@@ -118,7 +118,7 @@ export async function createListing(_previousState: unknown, formData: FormData)
         redirect("/login");
     }
     if (session?.user.role !== "agent") {
-        return { error: "Only agents can create listinga." }
+        return { error: "Only agents can create listing." }
     }
     const agentId = Number(session?.user.id);
 
@@ -381,7 +381,7 @@ export async function acceptBid(propertyId: number, offerId: number, _previousSt
 export async function completeSale(propertyId: number, _previousState: unknown, formData: FormData) {
 
     const session = await auth();
-    
+
     if (!session) {
         redirect("/login");
     }
@@ -462,6 +462,134 @@ export async function completeSale(propertyId: number, _previousState: unknown, 
         console.error("completeSale transaction failed:", err);
         await client.query("ROLLBACK");
         return { error: "Something went wrong completing the sale" };
+    } finally {
+        client.release();
+    }
+
+    revalidatePath(`/properties/${propertyId}`);
+    return { success: true };
+}
+
+/**
+ * Records the collapse of an agreed sale. Appends SALE_COLLAPSED to the chain, marks the
+ * accepted offer collapsed, and sets the property state to 'collapsed'.
+ */
+export async function collapseSale(propertyId: number, _previousState: unknown, formData: FormData) {
+
+    const session = await auth();
+
+    if (!session) {
+        redirect("/login");
+    }
+
+    const userId = Number(session.user.id);
+
+    const reasonRaw = formData.get("reason");
+    let reason: string | null;
+
+    if (typeof reasonRaw === "string" && reasonRaw !== "") {
+        reason = reasonRaw;
+    } else {
+        reason = null;
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const locked = await client.query<{ state: BiddingState }>(
+            `SELECT state FROM properties WHERE property_id = $1 FOR UPDATE`,
+            [propertyId]
+        );
+
+        if (locked.rows[0].state !== "sale_agreed") {
+            await client.query("ROLLBACK");
+            return { error: "Only an agreed sale can collapse" };
+        }
+
+        const acceptedOffer = await client.query<{offer_id: number; current_amount: number; bidder_id: number;}>(
+            `SELECT offer_id, current_amount, bidder_id FROM offers
+            WHERE property_id = $1 AND status = $2`,
+            [propertyId, "accepted"]
+        );
+
+        if (acceptedOffer.rows.length === 0) {
+            await client.query("ROLLBACK");
+            return { error: "No accepted offer found on this property" };
+        }
+
+        const failedOffer = acceptedOffer.rows[0];
+
+        let initiatedBy: "buyer" | "vendor";
+        if (session.user.role === "vendor" && (await isPropertyVendor(propertyId, userId))) {
+            initiatedBy = "vendor";
+        } else if (session.user.role === "bidder" && failedOffer.bidder_id === userId) {
+            initiatedBy = "buyer";
+        } else {
+            await client.query("ROLLBACK");
+            return { error: "Only the vendor or the accepted bidder can withdraw from this sale" };
+        }
+
+        const tail = await client.query(
+            `SELECT sequence, hash FROM events
+             WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
+            [propertyId]
+        );
+
+        let sequence: number;
+        let prevHash: string;
+        if (tail.rows.length === 0) {
+            sequence = 1;
+            prevHash = GENESIS_HASH;
+        } else {
+            sequence = tail.rows[0].sequence + 1;
+            prevHash = tail.rows[0].hash;
+        }
+
+        const timestamp = new Date().toISOString();
+        const details = {
+            failed_offer_id: failedOffer.offer_id,
+            amount: failedOffer.current_amount,
+            initiated_by: initiatedBy,
+            reason: reason,
+        };
+        const nonce = makeNonce();
+        const preimage: EventPreimage = {
+            property_id: propertyId,
+            sequence,
+            event_type: "SALE_COLLAPSED",
+            actor_id: userId,
+            timestamp,
+            details,
+            nonce,
+            prev_hash: prevHash,
+        };
+
+        const { hash, canonicalDetails } = hashEvent(preimage);
+
+        await client.query(
+            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [propertyId, sequence, "SALE_COLLAPSED", userId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
+        );
+
+        await client.query(
+            `UPDATE offers SET status = $1, updated_at = NOW() WHERE offer_id = $2`,
+            ["collapsed", failedOffer.offer_id]
+        );
+
+        await client.query(
+            `UPDATE properties SET state = $1, updated_at = NOW() WHERE property_id = $2`,
+            ["collapsed", propertyId]
+        );
+
+        await client.query("COMMIT");
+
+    } catch (err) {
+        console.error("collapseSale transaction failed:", err);
+        await client.query("ROLLBACK");
+        return { error: "Something went wrong recording the collapse" };
     } finally {
         client.release();
     }

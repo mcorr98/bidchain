@@ -12,6 +12,7 @@ import CloseBiddingButton from "@/components/close-bidding-button";
 import AcceptBidButton from "@/components/accept-bid-button";
 import CompleteSaleButton from "@/components/complete-sale-button";
 import WithdrawBidButton from "@/components/withdraw-bid-button";
+import CollapseSaleForm from "@/components/collapse-sale-form";
 
 type PropertyRouteParams = {
     id: string;
@@ -333,6 +334,24 @@ export default async function PropertyPage(props: PropertyPageProps) {
         completeControl = <CompleteSaleButton propertyId={property.property_id} />;
     }
 
+    // Collapse sale 
+    let canCollapse = false;
+    if (property.state === "sale_agreed") {
+        if (isVendor) {
+            canCollapse = true;
+        } else if (session?.user.role === "bidder") {
+            const accepted = await pool.query(
+                `SELECT offer_id FROM offers WHERE property_id = $1 AND status = 'accepted' AND bidder_id = $2`,
+                [propertyId, userId]
+            );
+            canCollapse = accepted.rows.length > 0;
+        }
+    }
+    let collapseControl = null;
+    if (canCollapse) {
+        collapseControl = <CollapseSaleForm propertyId={property.property_id} />;
+    }
+
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
             {imageArea}
@@ -352,6 +371,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                     {participantSection}
                     {closeControl}
                     {completeControl}
+                    {collapseControl}
                 </div>
                 <div>
                     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
