@@ -596,4 +596,124 @@ export async function collapseSale(propertyId: number, _previousState: unknown, 
 
     revalidatePath(`/properties/${propertyId}`);
     return { success: true };
+} 
+
+/**
+ * Relists a collapsed property
+ */
+export async function relistProperty(propertyId: number, _previousState: unknown, formData: FormData) {
+
+    const session = await auth();
+
+    if (!session) {
+        redirect("/login");
+    }
+
+    if (session.user.role !== "agent") {
+        return { error: "Only agents can relist a property" };
+    }
+
+    const agentId = Number(session.user.id);
+
+    if (!(await canManageProperty(propertyId, agentId))) {
+        return { error: "You don't manage this property" };
+    }
+
+    const pounds = Number(formData.get("asking_price"));
+
+    if (Number.isNaN(pounds)) {
+        return { error: "Enter a valid asking price" };
+    }
+    if (pounds <= 0) {
+        return { error: "Enter a valid asking price" };
+    }
+    if (!Number.isInteger(pounds)) {
+        return { error: "Asking price must be whole pounds" };
+    }
+
+    const newAskingPricePence = pounds * 100;
+
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const locked = await client.query<{ state: BiddingState; asking_price: number }>(
+            `SELECT state, asking_price FROM properties WHERE property_id = $1 FOR UPDATE`,
+            [propertyId]
+        );
+
+        if (locked.rows[0].state !== "collapsed") {
+            await client.query("ROLLBACK");
+            return { error: "Only a collapsed sale can be relisted" };
+        }
+
+        const previousAskingPrice = locked.rows[0].asking_price;
+
+        const tail = await client.query(
+            `SELECT sequence, hash FROM events 
+            WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
+            [propertyId]
+        );
+
+        let sequence: number;
+        let prevHash: string;
+
+        if (tail.rows.length === 0) {
+            sequence = 1;
+            prevHash = GENESIS_HASH;
+        } else {
+            sequence = tail.rows[0].sequence + 1;
+            prevHash = tail.rows[0].hash;
+        }
+
+        const timestamp = new Date().toISOString();
+        const details = {
+            previous_asking_price: previousAskingPrice,
+            new_asking_price: newAskingPricePence,
+        };
+        const nonce = makeNonce();
+        const preimage: EventPreimage = {
+            property_id: propertyId,
+            sequence,
+            event_type: "PROPERTY_RELISTED",
+            actor_id: agentId,
+            timestamp,
+            details,
+            nonce,
+            prev_hash: prevHash,
+        };
+
+        const { hash, canonicalDetails } = hashEvent(preimage);
+
+        await client.query(
+            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [propertyId, sequence, "PROPERTY_RELISTED", agentId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
+        );
+
+        await client.query(
+            `UPDATE properties SET asking_price = $1, state = $2, updated_at = NOW()
+             WHERE property_id = $3`,
+            [newAskingPricePence, "open", propertyId]
+        );
+
+        await client.query(
+            `UPDATE property_participants SET status = $1, joined_at = NULL
+             WHERE property_id = $2 AND status = $3`,
+            ["invited", propertyId, "joined"]
+        );
+
+        await client.query("COMMIT");
+
+    } catch (err) {
+        console.error("relistProperty transaction failed:", err);
+        await client.query("ROLLBACK");
+        return { error: "Something went wrong relisting the property" };
+    } finally {
+        client.release();
+    }
+
+    revalidatePath(`/properties/${propertyId}`);
+    return { success: true };
 }

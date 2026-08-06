@@ -12,6 +12,7 @@ type InvitationLockRow = {
     property_id: number | null;
     expires_at: Date;
     accepted_at: Date | null;
+    created_by: number;
 };
 
 export async function inviteBidder(propertyId: number, _previousState: unknown, formData: FormData) {
@@ -68,8 +69,8 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
     try {
         await client.query("BEGIN");
         const result = await client.query<InvitationLockRow>(
-            `SELECT invitation_id, email, property_id, expires_at, accepted_at
-        FROM invitations WHERE token_hash = $1 FOR UPDATE`,
+            `SELECT invitation_id, email, property_id, expires_at, accepted_at, created_by
+            FROM invitations WHERE token_hash = $1 FOR UPDATE`,
             [tokenHash]
         );
 
@@ -98,9 +99,10 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
 
         await client.query(
             `INSERT INTO property_participants (property_id, user_id, status, invited_by, joined_at)
-        VALUES ($1, $2, 'joined', (SELECT created_by FROM invitations WHERE invitation_id = $3), NOW())
-        ON CONFLICT (property_id, user_id) DO NOTHING`,
-            [invitation.property_id, userId, invitation.invitation_id]
+            VALUES ($1, $2, 'joined', $3, NOW())
+            ON CONFLICT (property_id, user_id)
+            DO UPDATE SET status = 'joined', joined_at = NOW()`,
+            [invitation.property_id, userId, invitation.created_by]
         );
 
         await client.query(

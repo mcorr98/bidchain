@@ -12,7 +12,8 @@ import CloseBiddingButton from "@/components/close-bidding-button";
 import AcceptBidButton from "@/components/accept-bid-button";
 import CompleteSaleButton from "@/components/complete-sale-button";
 import WithdrawBidButton from "@/components/withdraw-bid-button";
-import CollapseSaleForm from "@/components/collapse-sale-form";
+import CollapseSaleForm from "@/components/collapse-sale-form"; 
+import RelistForm from "@/components/relist-form";
 
 type PropertyRouteParams = {
     id: string;
@@ -352,6 +353,14 @@ export default async function PropertyPage(props: PropertyPageProps) {
         collapseControl = <CollapseSaleForm propertyId={property.property_id} />;
     }
 
+    // Re-lisiting 
+    let relistControl = null;
+    if (isManaging && property.state === "collapsed") {
+        relistControl = (
+            <RelistForm propertyId={property.property_id} currentAskingPricePounds={property.asking_price / 100}/>
+        );
+    }
+
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
             {imageArea}
@@ -371,7 +380,8 @@ export default async function PropertyPage(props: PropertyPageProps) {
                     {participantSection}
                     {closeControl}
                     {completeControl}
-                    {collapseControl}
+                    {collapseControl} 
+                    {relistControl}
                 </div>
                 <div>
                     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

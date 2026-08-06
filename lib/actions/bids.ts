@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { canBidOn } from "@/lib/permissions";
-import { hashEvent, makeNonce, GENESIS_HASH, EventPreimage } from "@/lib/chain";
+import { hashEvent, makeNonce, GENESIS_HASH, EventPreimage, EventType, JsonValue } from "@/lib/chain";
 import { BiddingState } from "@/lib/types";
 
 /**
@@ -79,19 +79,53 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
 
         await client.query(`SELECT property_id FROM properties WHERE property_id = $1 FOR UPDATE`, [propertyId]);
 
-        const tail = await client.query(
-            `SELECT sequence, hash
-            FROM events
-            WHERE property_id = $1
-            ORDER BY sequence DESC
-            LIMIT 1`,
-            [propertyId]
+        const existingOffer = await client.query<{ offer_id: number; current_amount: number }>(
+            `SELECT offer_id, current_amount FROM offers
+            WHERE property_id = $1 AND bidder_id = $2 AND status = $3`,
+            [propertyId, bidderId, "active"]
         );
 
-        const offerInsert = await client.query(`INSERT INTO offers (property_id, bidder_id, current_amount, conditions, status, last_affirmed_at)
-            VALUES ($1, $2, $3, $4, $5, $6) 
-            RETURNING offer_id`,
-            [propertyId, bidderId, amountPence, conditions, "active", null]
+        let offerId: number;
+        let eventType: EventType;
+        let details: JsonValue;
+
+        if (existingOffer.rows.length === 0) {
+            const insert = await client.query<{ offer_id: number }>(
+                `INSERT INTO offers (property_id, bidder_id, current_amount, conditions, status)
+                VALUES ($1, $2, $3, $4, 'active')
+                RETURNING offer_id`,
+                [propertyId, bidderId, amountPence, conditions]
+            );
+
+            offerId = insert.rows[0].offer_id;
+            eventType = "BID_PLACED";
+            details = { offer_id: offerId, amount: amountPence, conditions };
+
+        } else {
+            const previous = existingOffer.rows[0];
+            offerId = previous.offer_id;
+
+            await client.query(
+                `UPDATE offers SET current_amount = $1, conditions = $2, updated_at = NOW()
+                WHERE offer_id = $3`,
+                [amountPence, conditions, offerId]
+            );
+
+            eventType = "BID_REVISED";
+            details = {
+                offer_id: offerId,
+                old_amount: previous.current_amount,
+                new_amount: amountPence,
+                conditions,
+            };
+        }
+
+        const tail = await client.query(
+            `SELECT sequence, hash FROM events
+             WHERE property_id = $1
+             ORDER BY sequence DESC
+             LIMIT 1`,
+            [propertyId]
         );
 
         let sequence: number;
@@ -104,18 +138,13 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
             sequence = tail.rows[0].sequence + 1;
             prevHash = tail.rows[0].hash;
         }
-
+        
         const timestamp = new Date().toISOString();
-        const details = {
-            amount: amountPence,
-            offer_id: offerInsert.rows[0].offer_id,
-            conditions: conditions,
-        }
         const nonce = makeNonce();
         const preimage: EventPreimage = {
             property_id: propertyId,
             sequence,
-            event_type: "BID_PLACED",
+            event_type: eventType,
             actor_id: bidderId,
             timestamp,
             details,
@@ -124,6 +153,7 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
         };
 
         const { hash, canonicalDetails } = hashEvent(preimage);
+
         await client.query(
             `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -143,6 +173,7 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
     revalidatePath(`/properties/${propertyId}`);
     return { success: true };
 }
+
 
 /**
  * Withdraws a bidder's own offer. Appends BID_WITHDRAWN to the chain and marks the offer withdrawn
@@ -182,7 +213,6 @@ export async function withdrawBid(propertyId: number, offerId: number, _previous
             await client.query("ROLLBACK");
             return { error: "Offers can no longer be withdrawn on this property" };
         }
-
 
         const offerCheck = await client.query<{ current_amount: number }>(
             `SELECT current_amount FROM offers
