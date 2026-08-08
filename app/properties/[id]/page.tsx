@@ -12,8 +12,9 @@ import CloseBiddingButton from "@/components/close-bidding-button";
 import AcceptBidButton from "@/components/accept-bid-button";
 import CompleteSaleButton from "@/components/complete-sale-button";
 import WithdrawBidButton from "@/components/withdraw-bid-button";
-import CollapseSaleForm from "@/components/collapse-sale-form"; 
+import CollapseSaleForm from "@/components/collapse-sale-form";
 import RelistForm from "@/components/relist-form";
+import WithdrawListingForm from "@/components/withdraw-listing-form"; 
 
 type PropertyRouteParams = {
     id: string;
@@ -62,7 +63,6 @@ export default async function PropertyPage(props: PropertyPageProps) {
     }
 
     // Property details 
-
     let addressLine;
     if (property.address_line_2 === null) {
         addressLine = property.address_line_1;
@@ -357,8 +357,14 @@ export default async function PropertyPage(props: PropertyPageProps) {
     let relistControl = null;
     if (isManaging && property.state === "collapsed") {
         relistControl = (
-            <RelistForm propertyId={property.property_id} currentAskingPricePounds={property.asking_price / 100}/>
+            <RelistForm propertyId={property.property_id} currentAskingPricePounds={property.asking_price / 100} />
         );
+    }
+
+    // Withdraw Listing  
+    let withdrawListingControl = null;
+    if (isManaging && (property.state === "open" || property.state === "closed")) {
+        withdrawListingControl = <WithdrawListingForm propertyId={property.property_id} />;
     }
 
     return (
@@ -380,8 +386,9 @@ export default async function PropertyPage(props: PropertyPageProps) {
                     {participantSection}
                     {closeControl}
                     {completeControl}
-                    {collapseControl} 
+                    {collapseControl}
                     {relistControl}
+                    {withdrawListingControl}
                 </div>
                 <div>
                     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

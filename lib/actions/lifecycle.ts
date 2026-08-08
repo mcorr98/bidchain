@@ -508,7 +508,7 @@ export async function collapseSale(propertyId: number, _previousState: unknown, 
             return { error: "Only an agreed sale can collapse" };
         }
 
-        const acceptedOffer = await client.query<{offer_id: number; current_amount: number; bidder_id: number;}>(
+        const acceptedOffer = await client.query<{ offer_id: number; current_amount: number; bidder_id: number; }>(
             `SELECT offer_id, current_amount, bidder_id FROM offers
             WHERE property_id = $1 AND status = $2`,
             [propertyId, "accepted"]
@@ -596,7 +596,7 @@ export async function collapseSale(propertyId: number, _previousState: unknown, 
 
     revalidatePath(`/properties/${propertyId}`);
     return { success: true };
-} 
+}
 
 /**
  * Relists a collapsed property
@@ -714,6 +714,123 @@ export async function relistProperty(propertyId: number, _previousState: unknown
         client.release();
     }
 
+    revalidatePath(`/properties/${propertyId}`);
+    return { success: true };
+}
+
+/**
+ * Withdraws a listing from the market. Appends LISTING_WITHDRAWN to hash chain and sets both
+ * the bidding state and the public status to 'withdrawn'.
+ */
+export async function withdrawListing(propertyId: number, _previousState: unknown, formData: FormData) {
+
+    const session = await auth();
+
+    if (!session) {
+        redirect("/login");
+    }
+
+    if (session.user.role !== "agent") {
+        return { error: "Only agents can withdraw a listing" };
+    }
+
+    const agentId = Number(session.user.id);
+
+    if (!(await canManageProperty(propertyId, agentId))) {
+        return { error: "You don't manage this property" };
+    }
+
+    const reasonRaw = formData.get("reason");
+    let reason: string | null;
+    if (typeof reasonRaw === "string" && reasonRaw !== "") {
+        reason = reasonRaw;
+    } else {
+        reason = null;
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const locked = await client.query<{ state: BiddingState }>(
+            `SELECT state FROM properties WHERE property_id = $1 FOR UPDATE`,
+            [propertyId]
+        );
+
+        const currentState = locked.rows[0].state;
+
+        if (currentState !== "open" && currentState !== "closed") {
+            await client.query("ROLLBACK");
+            return { error: "Only an open or closed listing can be withdrawn" };
+        }
+
+        const tail = await client.query(
+            `SELECT sequence, hash FROM events
+            WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
+            [propertyId]
+        );
+
+        let sequence: number;
+        let prevHash: string;
+        if (tail.rows.length === 0) {
+            sequence = 1;
+            prevHash = GENESIS_HASH;
+        } else {
+            sequence = tail.rows[0].sequence + 1;
+            prevHash = tail.rows[0].hash;
+        }
+
+        const timestamp = new Date().toISOString();
+        const details = {
+            reason: reason,
+        };
+        const nonce = makeNonce();
+        const preimage: EventPreimage = {
+            property_id: propertyId,
+            sequence,
+            event_type: "LISTING_WITHDRAWN",
+            actor_id: agentId,
+            timestamp,
+            details,
+            nonce,
+            prev_hash: prevHash,
+        };
+
+        const { hash, canonicalDetails } = hashEvent(preimage);
+
+        await client.query(
+            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            [propertyId, sequence, "LISTING_WITHDRAWN", agentId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
+        );
+
+        // Any live offers expire with the listing
+        await client.query(
+            `UPDATE offers SET status = $1, updated_at = NOW()
+            WHERE property_id = $2 AND status = $3`,
+            ["expired", propertyId, "active"]
+        );
+
+        /* Both state and status change i.e the bidding process stops and the listing also 
+        leaves the market.*/ 
+        await client.query(
+            `UPDATE properties SET state = $1, status = $2, updated_at = NOW()
+             WHERE property_id = $3`,
+            ["withdrawn", "withdrawn", propertyId]
+        );
+
+        await client.query("COMMIT");
+
+    } catch (err) {
+        console.error("withdrawListing transaction failed:", err);
+        await client.query("ROLLBACK");
+        return { error: "Something went wrong withdrawing the listing" };
+    } finally {
+        client.release();
+    }
+
+    revalidatePath("/agent/listings");
     revalidatePath(`/properties/${propertyId}`);
     return { success: true };
 }
