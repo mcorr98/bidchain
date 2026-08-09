@@ -6,7 +6,8 @@ import { GENESIS_HASH, makeNonce, EventPreimage, hashEvent } from "@/lib/chain";
 import { revalidatePath } from "next/cache";
 import { BiddingState } from "@/lib/types";
 import { redirect } from "next/navigation";
-import { ListingType } from "@/lib/types";
+import { ListingType } from "@/lib/types"; 
+import { isActiveAgency } from "@/lib/permissions";
 
 type ParsedOptionalWholeNumber = number | null | "invalid";
 
@@ -735,6 +736,10 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
     }
 
     const agentId = Number(session.user.id);
+
+    if (!(await isActiveAgency(agentId))) {
+        return { error: "Your agency account has not been activated" };
+    }
 
     if (!(await canManageProperty(propertyId, agentId))) {
         return { error: "You don't manage this property" };

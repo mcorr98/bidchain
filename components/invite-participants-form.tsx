@@ -25,12 +25,7 @@ export default function InvitationForm(props: InvitationFormProps) {
                 <p className="mb-2 text-xs text-teal-700">
                     Send this link to the bidder. It can be used once and expires in 7 days.
                 </p>
-                <input
-                    readOnly
-                    value={state.link}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full rounded border border-teal-300 bg-white px-2 py-1 font-mono text-xs"
-                />
+                <input readOnly value={state.link} onFocus={(e) => e.target.select()} className="w-full rounded border border-teal-300 bg-white px-2 py-1 font-mono text-xs" />
             </div>
         );
     }
@@ -48,19 +43,10 @@ export default function InvitationForm(props: InvitationFormProps) {
 
             <label className="block text-sm font-medium">
                 Bidder email
-                <input
-                    name="email"
-                    type="email"
-                    required
-                    className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2"
-                />
+                <input name="email" type="email" required className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2" />
             </label>
 
-            <button
-                type="submit"
-                disabled={pending}
-                className="w-full rounded bg-action px-4 py-2 font-medium text-white hover:bg-action-strong disabled:opacity-50"
-            >
+            <button type="submit" disabled={pending} className="w-full rounded bg-action px-4 py-2 font-medium text-white hover:bg-action-strong disabled:opacity-50">
                 {buttonLabel}
             </button>
         </form>

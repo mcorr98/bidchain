@@ -53,30 +53,16 @@ export default async function LoginPage(props: LoginPageProps) {
             <div className="mx-auto mt-16 max-w-sm">
                 <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
                     <h1 className="mb-6 text-2xl font-semibold">Log in to BidChain</h1>
-
                     {errorMessage}
-
                     <form action={handleLogin} className="space-y-4">
                         <label className="block text-sm font-medium">
                             Email
-                            <input
-                                name="email"
-                                type="email"
-                                required
-                                autoComplete="email"
-                                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                            />
+                            <input name="email" type="email" required autoComplete="email" className="mt-1 w-full rounded border border-gray-300 px-3 py-2" />
                         </label>
 
                         <label className="block text-sm font-medium">
                             Password
-                            <input
-                                name="password"
-                                type="password"
-                                required
-                                autoComplete="current-password"
-                                className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                            />
+                            <input name="password" type="password" required autoComplete="current-password" className="mt-1 w-full rounded border border-gray-300 px-3 py-2" />
                         </label>
 
                         <button type="submit" className="w-full rounded bg-action px-4 py-2 font-medium text-white hover:bg-action-strong">

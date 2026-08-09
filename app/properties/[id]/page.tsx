@@ -14,7 +14,8 @@ import CompleteSaleButton from "@/components/complete-sale-button";
 import WithdrawBidButton from "@/components/withdraw-bid-button";
 import CollapseSaleForm from "@/components/collapse-sale-form";
 import RelistForm from "@/components/relist-form";
-import WithdrawListingForm from "@/components/withdraw-listing-form"; 
+import WithdrawListingForm from "@/components/withdraw-listing-form";
+import ReinviteButton from "@/components/reinvite-button";
 
 type PropertyRouteParams = {
     id: string;
@@ -261,6 +262,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                         );
                     })}
                 </ol>
+                <a href={`/api/properties/${property.property_id}/receipt`} className="text-xs text-action underline">Download chain receipt</a>
             </div>
         );
     }
@@ -290,8 +292,14 @@ export default async function PropertyPage(props: PropertyPageProps) {
             participantList = (
                 <ul className="divide-y divide-slate-200">
                     {participants.map((participant) => {
+                        let reinviteControl = null;
+                        if (participant.status !== "joined") {
+                            reinviteControl = (
+                                <ReinviteButton propertyId={property.property_id} email={participant.email} />
+                            );
+                        }
                         return (
-                            <li key={participant.participant_id} className="flex items-center justify-between py-2">
+                            <li key={participant.participant_id} className="flex items-start justify-between py-2">
                                 <div>
                                     <p className="text-sm font-medium text-ink">{participant.name}</p>
                                     <p className="text-sm text-gray-500">{participant.email}</p>
@@ -299,6 +307,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs uppercase tracking-wide text-gray-600">
                                     {participant.status}
                                 </span>
+                                {reinviteControl}
                             </li>
                         );
                     })}

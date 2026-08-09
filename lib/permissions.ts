@@ -1,6 +1,11 @@
 import pool from "./db";
 import { QueryResult } from "pg";
 
+type IdDocumentViewer = {
+    id: string;
+    role: string;
+};
+
 /**
  * Helper method which checks whether a query returns any rows 
  * @param result - result of the query to be checked for rows 
@@ -20,10 +25,15 @@ export async function canBidOn(propertyId: number, userId: number): Promise<bool
 
     const result = await pool.query(
         `SELECT participant_id FROM property_participants
-         WHERE property_id = $1 AND user_id = $2 AND status = $3`,
+        WHERE property_id = $1 AND user_id = $2 AND status = $3`,
         [propertyId, userId, "joined"]
     );
-    return hasRows(result);
+    if (!hasRows(result)) {
+        return false;
+    }
+
+    const isVerified = await isVerifiedForProperty(propertyId, userId);
+    return isVerified;
 
 }
 
@@ -40,12 +50,12 @@ export async function canViewOffers(propertyId: number, userId: number): Promise
          WHERE property_id = $1 AND user_id = $2 AND status = $3`,
         [propertyId, userId, "joined"]
     );
- 
+
     const isAssignedAgent = await canManageProperty(propertyId, userId);
     const isVendor = await isPropertyVendor(propertyId, userId);
 
     return hasRows(bidderResult) || isAssignedAgent || isVendor;
-}  
+}
 
 /**
  * Checks whether the user is the agent managing the property 
@@ -54,7 +64,7 @@ export async function canViewOffers(propertyId: number, userId: number): Promise
  * @returns - true if agent is the property manager, false if not 
  */
 export async function canManageProperty(propertyId: number, userId: number): Promise<boolean> {
-    
+
     const agentResult = await pool.query(
         `SELECT property_id FROM properties 
         WHERE property_id = $1 AND agent_id = $2`,
@@ -70,7 +80,7 @@ export async function canManageProperty(propertyId: number, userId: number): Pro
  * @param userId - user details to check as the vendor  
  * @returns true is vendor is the seller of the property, false if not 
  */
-export async function isPropertyVendor(propertyId: number, userId: number): Promise<boolean> { 
+export async function isPropertyVendor(propertyId: number, userId: number): Promise<boolean> {
     const vendorResult = await pool.query(
         `SELECT property_id FROM properties 
         WHERE property_id = $1 AND vendor_id = $2`,
@@ -78,4 +88,64 @@ export async function isPropertyVendor(propertyId: number, userId: number): Prom
     );
 
     return hasRows(vendorResult);
+}
+
+/**
+ * Checks whether a user may view a bidder's identity document
+ * @param viewer - the session user requesting the document
+ * @param ownerUserId - the bidder the document belongs to
+ * @returns true if the viewer may see the document, false otherwise
+ */
+export async function canViewIdDocument(viewer: IdDocumentViewer, ownerUserId: number): Promise<boolean> {
+    if (viewer.role === "admin") {
+        return true;
+    }
+    if (Number(viewer.id) === ownerUserId) {
+        return true;
+    }
+    if (viewer.role === "agent") {
+        const result = await pool.query(
+            `SELECT pp.participant_id
+            FROM property_participants pp
+            JOIN properties p ON p.property_id = pp.property_id
+            WHERE p.agent_id = $1 AND pp.user_id = $2`,
+            [Number(viewer.id), ownerUserId]
+        );
+        return hasRows(result);
+    }
+    return false;
+}
+
+/**
+ * Checks whether a bidder holds a verified attestation from the agency
+ * managing this property
+ * @param propertyId - the property in question
+ * @param bidderId - the bidder whose verification is being checked
+ * @returns true if this property's agency has verified the bidder, false otherwise
+ */
+export async function isVerifiedForProperty(propertyId: number, bidderId: number): Promise<boolean> {
+    const result = await pool.query(
+        `SELECT bv.verification_id
+        FROM bidder_verifications bv
+        JOIN properties p ON p.agent_id = bv.agency_id
+        WHERE p.property_id = $1
+        AND bv.bidder_id = $2
+        AND bv.status = 'verified'`,
+        [propertyId, bidderId]
+    );
+    return hasRows(result);
+}
+
+/**
+ * Checks whether an agent's agency account has been admin-activated.
+ * @param agentId - the agent user being checked
+ * @returns true if the agency is active, false otherwise
+ */
+export async function isActiveAgency(agentId: number): Promise<boolean> {
+    const result = await pool.query(
+        `SELECT agent_profile_id FROM agent_profiles
+        WHERE user_id = $1 AND activation_status = 'active'`,
+        [agentId]
+    );
+    return hasRows(result);
 }
