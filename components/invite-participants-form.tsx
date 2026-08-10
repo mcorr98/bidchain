@@ -38,16 +38,11 @@ export default function InvitationForm(props: InvitationFormProps) {
     }
 
     return (
-        <form action={action} className="space-y-3">
-            {feedback}
-
-            <label className="block text-sm font-medium">
-                Bidder email
-                <input name="email" type="email" required className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2" />
-            </label>
-
-            <button type="submit" disabled={pending} className="w-full rounded bg-action px-4 py-2 font-medium text-white hover:bg-action-strong disabled:opacity-50">
-                {buttonLabel}
+        <form action={action} className="flex items-center gap-2 border-t border-slate-200 pt-3">
+            <label htmlFor="bidder-email" className="sr-only">Bidder email</label>
+            <input id="bidder-email" name="email" type="email" required placeholder="Invite bidder by email" className="h-9 flex-1 rounded border border-slate-300 px-3 text-sm" />
+            <button type="submit" disabled={pending} className="h-9 rounded bg-action px-4 text-sm font-medium text-white hover:bg-action-strong disabled:opacity-50">
+                Invite
             </button>
         </form>
     );

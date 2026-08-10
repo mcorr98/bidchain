@@ -32,7 +32,7 @@ export default function ReinviteButton(props: ReinviteButtonProps) {
     return (
         <form action={action}>
             <input type="hidden" name="email" value={props.email} />
-            <button type="submit" disabled={pending} className="rounded border border-slate-300 px-2 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"> 
+            <button type="submit" disabled={pending} className="text-xs text-action underline hover:text-action-strong"> 
                 {buttonLabel}
             </button>
             {feedback}
