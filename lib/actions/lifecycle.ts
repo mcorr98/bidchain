@@ -6,10 +6,32 @@ import { GENESIS_HASH, makeNonce, EventPreimage, hashEvent } from "@/lib/chain";
 import { revalidatePath } from "next/cache";
 import { BiddingState } from "@/lib/types";
 import { redirect } from "next/navigation";
-import { ListingType } from "@/lib/types"; 
+import { ListingType } from "@/lib/types";
 import { isActiveAgency } from "@/lib/permissions";
+import { randomUUID } from "crypto";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
 
 type ParsedOptionalWholeNumber = number | null | "invalid";
+
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}; 
+
+// On validation failure  submitted values are returned with the error so
+// the form can maintain the typed values
+function formValues(formData: FormData): Record<string, string> {
+    const values: Record<string, string> = {};
+    for (const [key, value] of formData.entries()) {
+        if (typeof value === "string") {
+            values[key] = value;
+        }
+    }
+    return values;
+}
 
 /**
  * Closes bidding on a property, preventing further bids
@@ -119,49 +141,84 @@ export async function createListing(_previousState: unknown, formData: FormData)
         redirect("/login");
     }
     if (session?.user.role !== "agent") {
-        return { error: "Only agents can create listing." }
+        return { error: "Only agents can create listing.", values: formValues(formData) }
     }
     const agentId = Number(session?.user.id);
+
+    if (!(await isActiveAgency(agentId))) {
+        return { error: "Your agency account has not been activated", values: formValues(formData) };
+    }
 
     // Vendor validation block  
     const vendorEmail = formData.get("vendor_email");
     if (typeof vendorEmail !== "string" || vendorEmail === "") {
-        return { error: "Enter the vendor's email address" };
+        return { error: "Enter the vendor's email address", values: formValues(formData) };
     }
     const vendorResult = await pool.query<{ user_id: number }>(
         `SELECT user_id FROM users WHERE email = $1 AND role = $2`,
         [vendorEmail, "vendor"]
     );
     if (vendorResult.rowCount === null || vendorResult.rowCount < 1) {
-        return { error: "No vendor found with that email: create their account first" };
+        return { error: "No vendor found with that email: create their account first", values: formValues(formData) };
     }
 
     // Property details validation block 
     const vendorId = vendorResult.rows[0].user_id;
     const addressLine1 = formData.get("address_line_1");
+    let addressLine2: string | null = null;
+    const addressLine2Raw = formData.get("address_line_2");
     const city = formData.get("city");
     const postcode = formData.get("postcode");
     if (typeof addressLine1 !== "string" || addressLine1 === "") {
-        return { error: "Enter the first line of the address" };
+        return { error: "Enter the first line of the address", values: formValues(formData) };
+    }
+    if (typeof addressLine2Raw === "string" && addressLine2Raw !== "") {
+        addressLine2 = addressLine2Raw;
     }
     if (typeof city !== "string" || city === "") {
-        return { error: "Enter the city" };
+        return { error: "Enter the city", values: formValues(formData) };
     }
     if (typeof postcode !== "string" || postcode === "") {
-        return { error: "Enter the postcode" };
+        return { error: "Enter the postcode", values: formValues(formData) };
+    }
+
+    // Image validation block
+    const image = formData.get("image");
+    let imagePath: string | null = null;
+    let imageBuffer: Buffer | null = null;
+    let storedImageName: string | null = null;
+    if (image instanceof File && image.size > 0) {
+        const imageExtension = ALLOWED_IMAGE_TYPES[image.type];
+        if (!imageExtension) {
+            return { error: "Photo must be a JPEG, PNG, or WebP", values: formValues(formData) };
+        }
+        if (image.size > MAX_IMAGE_SIZE_BYTES) {
+            return { error: "Photo must be under 10MB", values: formValues(formData) };
+        }
+        imageBuffer = Buffer.from(await image.arrayBuffer());
+        storedImageName = randomUUID() + imageExtension;
+        imagePath = "/uploads/" + storedImageName;
+    }
+
+    // Stores the image before the transaction so a rolled-back listing leaves an
+    // orphan file rather than a listing pointing at a missing file.
+    if (imageBuffer !== null && storedImageName !== null) {
+        const uploadDir = path.join(process.cwd(), "public", "uploads");
+        await mkdir(uploadDir, { recursive: true });
+        await writeFile(path.join(uploadDir, storedImageName), imageBuffer);
     }
 
 
     // Property price validation block 
     const pounds = Number(formData.get("asking_price"));
     if (Number.isNaN(pounds)) {
-        return { error: "Enter a valid asking price" };
+        return { error: "Enter a valid asking price", values: formValues(formData) };
     }
     if (pounds <= 0) {
-        return { error: "Enter a valid asking price" };
+        return { error: "Enter a valid asking price", values: formValues(formData) };
     }
     if (!Number.isInteger(pounds)) {
-        return { error: "Asking price must be whole pounds" };
+        return { error: "Asking price must be whole pounds", values: formValues(formData) };
     }
     const askingPricePence = pounds * 100;
 
@@ -172,7 +229,7 @@ export async function createListing(_previousState: unknown, formData: FormData)
     if (listingTypeRaw === "offers_over" || listingTypeRaw === "offers_around" || listingTypeRaw === "fixed_price") {
         listingType = listingTypeRaw;
     } else {
-        return { error: "Choose a listing type" };
+        return { error: "Choose a listing type", values: formValues(formData) };
     }
 
 
@@ -181,17 +238,23 @@ export async function createListing(_previousState: unknown, formData: FormData)
     const bathrooms = parseOptionalWholeNumber(formData.get("bathrooms"));
     const receptions = parseOptionalWholeNumber(formData.get("receptions"));
     if (bedrooms === "invalid" || bathrooms === "invalid" || receptions === "invalid") {
-        return { error: "Rooms must be whole numbers" };
+        return { error: "Rooms must be whole numbers", values: formValues(formData) };
     }
 
-
-    // Description validation block 
-    let description: string | null;
-    const descriptionRaw = formData.get("description");
-    if (typeof descriptionRaw === "string" && descriptionRaw !== "") {
-        description = descriptionRaw;
-    } else {
-        description = null;
+    // Listing link validation block
+    let listingUrl: string | null = null;
+    const listingUrlRaw = formData.get("listing_url");
+    if (typeof listingUrlRaw === "string" && listingUrlRaw !== "") {
+        let parsed: URL;
+        try {
+            parsed = new URL(listingUrlRaw);
+        } catch {
+            return { error: "Listing link must be a full web address", values: formValues(formData) };
+        }
+        if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+            return { error: "Listing link must start with http or https", values: formValues(formData) };
+        }
+        listingUrl = listingUrlRaw;
     }
 
 
@@ -203,10 +266,10 @@ export async function createListing(_previousState: unknown, formData: FormData)
         await client.query("BEGIN");
 
         const propertyInsert = await client.query<{ property_id: number }>(
-            `INSERT INTO properties (vendor_id, agent_id, address_line_1, city, postcode, asking_price, bedrooms, bathrooms, receptions, description, listing_type)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            `INSERT INTO properties (vendor_id, agent_id, address_line_1, address_line_2, city, postcode, asking_price, bedrooms, bathrooms, receptions, listing_url, listing_type, image_path)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
              RETURNING property_id`,
-            [vendorId, agentId, addressLine1, city, postcode, askingPricePence, bedrooms, bathrooms, receptions, description, listingType]
+            [vendorId, agentId, addressLine1, addressLine2, city, postcode, askingPricePence, bedrooms, bathrooms, receptions, listingUrl, listingType, imagePath]
         );
 
         propertyId = propertyInsert.rows[0].property_id;
@@ -240,7 +303,7 @@ export async function createListing(_previousState: unknown, formData: FormData)
     } catch (err) {
         console.error("createListing transaction failed:", err);
         await client.query("ROLLBACK");
-        return { error: "Something went wrong creating the listing" };
+        return { error: "Something went wrong creating the listing", values: formValues(formData) };
     } finally {
         client.release();
     }
@@ -700,9 +763,9 @@ export async function relistProperty(propertyId: number, _previousState: unknown
         );
 
         await client.query(
-            `UPDATE property_participants SET status = $1, joined_at = NULL
-             WHERE property_id = $2 AND status = $3`,
-            ["invited", propertyId, "joined"]
+            `UPDATE property_participants SET status = $1
+            WHERE property_id = $2 AND status = $3`,
+            ["lapsed", propertyId, "joined"]
         );
 
         await client.query("COMMIT");
@@ -818,7 +881,7 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
         );
 
         /* Both state and status change i.e the bidding process stops and the listing also 
-        leaves the market.*/ 
+        leaves the market.*/
         await client.query(
             `UPDATE properties SET state = $1, status = $2, updated_at = NOW()
              WHERE property_id = $3`,

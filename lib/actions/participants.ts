@@ -48,6 +48,17 @@ export async function inviteBidder(propertyId: number, _previousState: unknown, 
         [tokenHash, invitedEmail, "bidder_invite", propertyId, userId, expiryDate]
     );
 
+    await pool.query(
+        `INSERT INTO property_participants (property_id, user_id, status, invited_by)
+        SELECT $1, u.user_id, 'invited', $2
+        FROM users u
+        WHERE u.email = $3
+        ON CONFLICT (property_id, user_id)
+        DO UPDATE SET status = 'invited'
+        WHERE property_participants.status = 'lapsed'`,
+        [propertyId, userId, invitedEmail]
+    );
+
     const link = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${token}`;
 
     revalidatePath(`/properties/${propertyId}`);

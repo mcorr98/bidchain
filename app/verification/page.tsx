@@ -44,7 +44,7 @@ export default async function VerificationPage() {
       {hasDocument && (
         <p>
           Document submitted{" "}{new Date(profile.submitted_at).toLocaleDateString("en-GB")}.
-          Agencies review it when you register interest in one of their listings.
+          Agencies review it after you accept an invitation to bid on one of their listings.
         </p>
       )}
 

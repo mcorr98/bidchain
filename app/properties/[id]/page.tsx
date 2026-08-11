@@ -1,12 +1,11 @@
 import pool from "@/lib/db";
 import { Property } from "@/lib/types";
 import { notFound } from "next/navigation";
-import { listingTypeLabel, formatPrice, featuresLine } from "@/lib/format";
+import { listingTypeLabel, formatPrice, featuresLine, eventTypeLabel } from "@/lib/format";
 import BidForm from "@/components/bid-form";
 import { auth } from "@/auth";
 import { canBidOn, canManageProperty, canViewOffers, isPropertyVendor } from "@/lib/permissions";
 import { EventRow, verifyChain } from "@/lib/chain";
-import { eventTypeLabel } from "@/lib/format";
 import InvitationForm from "@/components/invite-participants-form"
 import CloseBiddingButton from "@/components/close-bidding-button";
 import AcceptBidButton from "@/components/accept-bid-button";
@@ -16,6 +15,8 @@ import CollapseSaleForm from "@/components/collapse-sale-form";
 import RelistForm from "@/components/relist-form";
 import WithdrawListingForm from "@/components/withdraw-listing-form";
 import ReinviteButton from "@/components/reinvite-button";
+import SectionHeading from "@/components/section-heading";
+import { HandCoins, Users, Link2, ChevronDown, Globe } from "lucide-react";
 
 type PropertyRouteParams = {
     id: string;
@@ -42,12 +43,26 @@ type ParticipantRow = {
     status: string;
 };
 
+type VendorContactRow = {
+    name: string;
+    email: string;
+    phone: string | null;
+    correspondence_address: string | null;
+};
+
+type AgentContactRow = {
+    name: string;
+    agency_name: string;
+    phone: string | null;
+    office_address: string | null;
+};
+
 export default async function PropertyPage(props: PropertyPageProps) {
 
     const params = await props.params;
     const propertyId = Number(params.id);
 
-    if (Number.isNaN(propertyId)) {
+    if (!Number.isInteger(propertyId) || propertyId < 1) {
         notFound();
     }
 
@@ -71,15 +86,8 @@ export default async function PropertyPage(props: PropertyPageProps) {
         addressLine = property.address_line_1 + ", " + property.address_line_2;
     }
 
-    let descriptionLine;
-    if (property.description === null) {
-        descriptionLine = null;
-    } else {
-        descriptionLine = <p className="max-w-prose line-clamp-4">{property.description}</p>;
-    }
-
     const session = await auth();
-    let userId = Number(session?.user.id);
+    const userId = Number(session?.user.id);
 
     // Permissions 
     let canBid = false;
@@ -93,6 +101,30 @@ export default async function PropertyPage(props: PropertyPageProps) {
     let isVendor = false;
     if (session?.user.role === "vendor") {
         isVendor = await isPropertyVendor(property.property_id, userId);
+    }
+
+    let vendorContact: VendorContactRow | null = null;
+    if (isManaging) {
+        const vendorContactResult = await pool.query<VendorContactRow>(
+            `SELECT u.name, u.email, vp.phone, vp.correspondence_address
+            FROM vendor_profiles vp
+            JOIN users u ON u.user_id = vp.user_id
+            WHERE vp.user_id = $1`,
+            [property.vendor_id]
+        );
+        vendorContact = vendorContactResult.rows[0] ?? null;
+    }
+
+    let agentContact: AgentContactRow | null = null;
+    if (session?.user.role === "bidder") {
+        const agentContactResult = await pool.query<AgentContactRow>(
+            `SELECT u.name, ap.agency_name, ap.phone, ap.office_address
+            FROM agent_profiles ap
+            JOIN users u ON u.user_id = ap.user_id
+            WHERE ap.user_id = $1`,
+            [property.agent_id]
+        );
+        agentContact = agentContactResult.rows[0] ?? null;
     }
 
     // Property image 
@@ -119,12 +151,12 @@ export default async function PropertyPage(props: PropertyPageProps) {
         actionSection = <p className="text-sm text-gray-500">Bidding is closed.</p>;
     } else if (session?.user.role === "bidder") {
         actionSection = <p className="text-sm text-gray-500">Bidding is open to invited participants.</p>;
-    } else if (isManaging && property.state === "open") {
-        actionSection = <InvitationForm propertyId={property.property_id} />;
     } else if (isManaging) {
         actionSection = <p className="text-sm text-gray-500">Bidding is {property.state}.</p>;
     } else if (session?.user.role === "agent") {
         actionSection = <p className="text-sm text-gray-500">You don't manage this property.</p>;
+    } else if (isVendor) {
+        actionSection = <p className="text-sm text-gray-500">You are the vendor of this property.</p>;
     }
 
     // Offers section 
@@ -133,19 +165,18 @@ export default async function PropertyPage(props: PropertyPageProps) {
         canSeeChain = await canViewOffers(property.property_id, Number(session.user.id))
     }
 
-    let offersResult = await pool.query<OfferRow>(`
-        SELECT o.offer_id, o.current_amount, o.conditions, o.status, o.created_at, o.bidder_id, u.name
+    let offersSection = null;
+    if (canSeeChain) {
+        let offersContent;
+        const offersResult = await pool.query<OfferRow>(
+            `SELECT o.offer_id, o.current_amount, o.conditions, o.status, o.created_at, o.bidder_id, u.name
         FROM offers o
         JOIN users u ON u.user_id = o.bidder_id
         WHERE o.property_id = $1 AND o.status = 'active'
         ORDER BY o.current_amount DESC`,
-        [propertyId]
-    );
-    const offers = offersResult.rows;
-
-    let offersSection = null;
-    if (canSeeChain) {
-        let offersContent;
+            [propertyId]
+        );
+        const offers = offersResult.rows;
         if (offers.length === 0) {
             offersContent = (
                 <p className="text-sm text-gray-500">No offers yet</p>
@@ -193,30 +224,27 @@ export default async function PropertyPage(props: PropertyPageProps) {
         }
         offersSection = (
             <div className="space-y-2">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-                    Current offers
-                </h2>
+                <SectionHeading icon={HandCoins} label="Current offers" />
                 {offersContent}
             </div>
         );
     }
 
     // Chain section
-    const eventsResult = await pool.query<EventRow & { actor_name: string }>(
-        `SELECT e.property_id, e.sequence, e.event_type, e.actor_id, e.timestamp, e.details, e.canonical_details, e.nonce, e.hash, e.prev_hash, u.name AS actor_name 
+    let chainSection = null;
+    if (canSeeChain) {
+        let badge;
+        const eventsResult = await pool.query<EventRow & { actor_name: string }>(
+            `SELECT e.property_id, e.sequence, e.event_type, e.actor_id, e.timestamp, e.details, e.canonical_details, e.nonce, e.hash, e.prev_hash, u.name AS actor_name 
         FROM events e 
         JOIN users u ON u.user_id = e.actor_id
         WHERE e.property_id = $1
         ORDER BY e.sequence ASC`,
-        [propertyId]
-    );
+            [propertyId]
+        );
 
-    const events = eventsResult.rows;
-    const verification = verifyChain(events);
-
-    let chainSection = null;
-    if (canSeeChain) {
-        let badge;
+        const events = eventsResult.rows;
+        const verification = verifyChain(events);
         if (verification.valid) {
             badge = (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-3 py-1 text-sm font-medium text-verified">
@@ -231,38 +259,57 @@ export default async function PropertyPage(props: PropertyPageProps) {
             );
         }
 
+        const displayEvents = [...events].reverse();
+        const recentEvents = displayEvents.slice(0, 5);
+        const earlierEvents = displayEvents.slice(5);
+
+        function renderEventItem(event: EventRow & { actor_name: string }) {
+            let amountLine = null;
+            if (event.details !== null && typeof event.details === "object" && !Array.isArray(event.details) && typeof event.details.amount === "number") {
+                amountLine = (
+                    <p className="text-sm font-medium text-brand">
+                        {formatPrice(event.details.amount)}
+                    </p>
+                );
+            }
+            return (
+                <li key={event.sequence} className="relative pb-4">
+                    <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-verified" />
+                    <p className="text-sm font-medium">
+                        {eventTypeLabel(event.event_type)}
+                        <span className="ml-2 font-normal text-gray-500">#{event.sequence}</span>
+                    </p>
+                    <p className="text-sm text-gray-500">
+                        {event.actor_name} · {event.timestamp.toLocaleDateString("en-GB")}
+                    </p>
+                    {amountLine}
+                </li>
+            );
+        }
+
         chainSection = (
-            <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Event record</h2>
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="space-y-1.5">
+                    <SectionHeading icon={Link2} label="History" />
                     {badge}
                 </div>
                 <ol className="border-l-2 border-slate-200 pl-4">
-                    {events.map((event) => {
-                        let amountLine = null;
-                        if (event.details !== null && typeof event.details === "object" && !Array.isArray(event.details) && typeof event.details.amount === "number") {
-                            amountLine = (
-                                <p className="text-sm font-medium text-brand">
-                                    {formatPrice(event.details.amount)}
-                                </p>
-                            );
-                        }
-                        return (
-                            <li key={event.sequence} className="relative pb-4">
-                                <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full bg-verified" />
-                                <p className="text-sm font-medium">
-                                    {eventTypeLabel(event.event_type)}
-                                    <span className="ml-2 font-normal text-gray-500">#{event.sequence}</span>
-                                </p>
-                                <p className="text-sm text-gray-500">
-                                    {event.actor_name} · {event.timestamp.toLocaleDateString("en-GB")}
-                                </p>
-                                {amountLine}
-                            </li>
-                        );
-                    })}
+                    {recentEvents.map(renderEventItem)}
                 </ol>
-                <a href={`/api/properties/${property.property_id}/receipt`} className="text-xs text-action underline">Download chain receipt</a>
+                {earlierEvents.length > 0 && (
+                    <details className="group">
+                        <summary className="cursor-pointer list-none text-xs text-action underline">
+                            <span className="group-open:hidden">Show {earlierEvents.length} earlier events</span>
+                            <span className="hidden group-open:inline">Hide earlier events</span>
+                        </summary>
+                        <ol className="mt-3 border-l-2 border-slate-200 pl-4">
+                            {earlierEvents.map(renderEventItem)}
+                        </ol>
+                    </details>
+                )}
+                <div className="border-t border-slate-200 pt-3">
+                    <a href={`/api/properties/${property.property_id}/receipt`} className="text-xs text-action underline">Download chain receipt</a>
+                </div>
             </div>
         );
     }
@@ -271,10 +318,10 @@ export default async function PropertyPage(props: PropertyPageProps) {
     if (isManaging) {
         const participantResult = await pool.query<ParticipantRow>(
             `SELECT pp.participant_id, u.name, u.email, pp.status
-                FROM property_participants pp
-                JOIN users u ON u.user_id = pp.user_id
-                WHERE pp.property_id = $1
-                ORDER BY pp.status, u.name`,
+            FROM property_participants pp
+            JOIN users u ON u.user_id = pp.user_id
+            WHERE pp.property_id = $1
+            ORDER BY pp.status, u.name`,
             [propertyId]
         );
         participants = participantResult.rows;
@@ -286,7 +333,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
         let participantList;
         if (participants.length === 0) {
             participantList = (
-                <p className="text-sm text-gray-500">No participants yet. Invite a bidder to get started.</p>
+                <p className="text-sm text-gray-500">No bidders yet. Invite a bidder to get started.</p>
             );
         } else {
             participantList = (
@@ -299,12 +346,12 @@ export default async function PropertyPage(props: PropertyPageProps) {
                             );
                         }
                         return (
-                            <li key={participant.participant_id} className="flex items-start justify-between py-2">
-                                <div>
-                                    <p className="text-sm font-medium text-ink">{participant.name}</p>
-                                    <p className="text-sm text-gray-500">{participant.email}</p>
+                            <li key={participant.participant_id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 py-2">
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium text-ink">{participant.name}</p>
+                                    <p className="truncate text-xs text-gray-500">{participant.email}</p>
                                 </div>
-                                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs uppercase tracking-wide text-gray-600">
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-600">
                                     {participant.status}
                                 </span>
                                 {reinviteControl}
@@ -316,8 +363,9 @@ export default async function PropertyPage(props: PropertyPageProps) {
         }
         participantSection = (
             <div className="space-y-2">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Participants</h2>
+                <SectionHeading icon={Users} label="Bidders" />
                 {participantList}
+                {property.state === "open" && <InvitationForm propertyId={property.property_id} />}
             </div>
         );
 
@@ -376,6 +424,32 @@ export default async function PropertyPage(props: PropertyPageProps) {
         withdrawListingControl = <WithdrawListingForm propertyId={property.property_id} />;
     }
 
+    const hasManageActions =
+        closeControl !== null ||
+        completeControl !== null ||
+        collapseControl !== null ||
+        relistControl !== null ||
+        withdrawListingControl !== null;
+
+    let manageSection = null;
+    if (hasManageActions) {
+        manageSection = (
+            <details className="group rounded-xl border border-slate-200 bg-white shadow-sm">
+                <summary className="flex cursor-pointer list-none items-center justify-between px-6 py-4">
+                    <span className="text-sm font-semibold uppercase tracking-wide text-gray-500">Manage listing</span>
+                    <ChevronDown className="h-4 w-4 text-gray-400 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="space-y-4 border-t border-slate-200 px-6 py-4">
+                    {closeControl}
+                    {completeControl}
+                    {collapseControl}
+                    {relistControl}
+                    {withdrawListingControl}
+                </div>
+            </details>
+        );
+    }
+
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
             {imageArea}
@@ -388,25 +462,44 @@ export default async function PropertyPage(props: PropertyPageProps) {
                         </div>
                         <p className="text-gray-600">{property.city}, {property.postcode}</p>
                         <p className="text-sm text-gray-600">{featuresLine(property.bedrooms, property.bathrooms, property.receptions)}</p>
+                        {property.listing_url !== null && (
+                            <a href={property.listing_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 pt-1 text-sm text-action underline">
+                                <Globe className="h-4 w-4" />
+                                View online
+                            </a>
+                        )}
                     </div>
-                    {descriptionLine}
                     {offersSection}
-                    {chainSection}
                     {participantSection}
-                    {closeControl}
-                    {completeControl}
-                    {collapseControl}
-                    {relistControl}
-                    {withdrawListingControl}
+                    {manageSection}
                 </div>
-                <div>
+                <div className="space-y-6 lg:sticky lg:top-8 lg:self-start lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
                     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                         <p className="text-sm text-gray-500">{listingTypeLabel(property.listing_type)}</p>
                         <p className="text-3xl font-semibold text-brand">{formatPrice(property.asking_price)}</p>
-                        <div className="mt-4 border-t border-slate-200 pt-4">
-                            {actionSection}
-                        </div>
+                        {actionSection !== undefined && (
+                            <div className="mt-4 border-t border-slate-200 pt-4">
+                                {actionSection}
+                            </div>
+                        )}
+                        {vendorContact !== null && (
+                            <div className="mt-4 border-t border-slate-200 pt-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Vendor</p>
+                                <p className="mt-1 text-sm font-medium text-ink">{vendorContact.name}</p>
+                                <p className="text-sm text-gray-500">{vendorContact.email}</p>
+                                {vendorContact.phone !== null && <p className="text-sm text-gray-500">{vendorContact.phone}</p>}
+                            </div>
+                        )}
+                        {agentContact !== null && (
+                            <div className="mt-4 border-t border-slate-200 pt-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Listing agent</p>
+                                <p className="mt-1 text-sm font-medium text-ink">{agentContact.agency_name}</p>
+                                <p className="text-sm text-gray-500">{agentContact.name}</p>
+                                {agentContact.phone !== null && <p className="text-sm text-gray-500">{agentContact.phone}</p>}
+                            </div>
+                        )}
                     </div>
+                    {chainSection}
                 </div>
             </div>
         </main>
