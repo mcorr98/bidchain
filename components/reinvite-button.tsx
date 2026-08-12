@@ -16,10 +16,16 @@ export default function ReinviteButton(props: ReinviteButtonProps) {
         feedback = (
             <p className="mt-1 text-xs text-red-700">{state.error}</p>
         );
-    } else if (state !== null && "link" in state) {
-        feedback = (
-            <input readOnly value={state.link} onFocus={(e) => e.target.select()} className="mt-1 w-full rounded border border-teal-300 bg-white px-2 py-1 font-mono text-xs"/>
-        );
+    } else if (state !== null && "success" in state) {
+        if (state.emailed) {
+            feedback = (
+                <p className="mt-1 text-xs text-teal-700">Invitation emailed.</p>
+            );
+        } else {
+            feedback = (
+                <p className="mt-1 text-xs text-amber-700">Email failed to send - please try again.</p>
+            );
+        }
     }
 
     let buttonLabel;
@@ -32,7 +38,7 @@ export default function ReinviteButton(props: ReinviteButtonProps) {
     return (
         <form action={action}>
             <input type="hidden" name="email" value={props.email} />
-            <button type="submit" disabled={pending} className="text-xs text-action underline hover:text-action-strong"> 
+            <button type="submit" disabled={pending} className="text-xs text-action underline hover:text-action-strong">
                 {buttonLabel}
             </button>
             {feedback}

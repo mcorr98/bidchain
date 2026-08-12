@@ -4,8 +4,9 @@ import { formatPrice } from "@/lib/format";
 import { BiddingState } from "@/lib/types";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { ChevronRight } from "lucide-react"; 
+import { ChevronRight } from "lucide-react";
 import StatCard from "@/components/stats-card";
+import InviteVendorForm from "@/components/invite-vendor-form";
 
 type AgentStats = {
     total_listings: string;
@@ -181,30 +182,38 @@ export default async function AgentListingsPage() {
                     </ul>
                 </div>
 
-                <div className="space-y-2">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Recent bids</h2>
-                    <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
-                        {activity.map((item) => {
-                            return (
-                                <li key={item.event_id} className="px-4 py-3">
-                                    <p className="text-sm font-semibold text-brand">
-                                        {formatPrice(item.amount)}
-                                        {item.offer_status !== null && item.offer_status !== "active" && item.offer_status !== "accepted" && (
-                                            <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
-                                                {item.offer_status}
-                                            </span>
-                                        )}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                        {item.address_line_1} · {item.actor_name}
-                                    </p>
-                                    <p className="text-xs text-gray-400">
-                                        {item.timestamp.toLocaleDateString("en-GB")}
-                                    </p>
-                                </li>
-                            );
-                        })}
-                    </ul>
+                <div className="space-y-6">
+                    <div className="space-y-2">
+                        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Invite vendor</h2>
+                        <div className="rounded-xl border border-slate-200 bg-white p-4">
+                            <InviteVendorForm />
+                        </div>
+                    </div>
+                    <div>
+                        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Recent bids</h2>
+                        <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
+                            {activity.map((item) => {
+                                return (
+                                    <li key={item.event_id} className="px-4 py-3">
+                                        <p className="text-sm font-semibold text-brand">
+                                            {formatPrice(item.amount)}
+                                            {item.offer_status !== null && item.offer_status !== "active" && item.offer_status !== "accepted" && (
+                                                <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
+                                                    {item.offer_status}
+                                                </span>
+                                            )}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            {item.address_line_1} · {item.actor_name}
+                                        </p>
+                                        <p className="text-xs text-gray-400">
+                                            {item.timestamp.toLocaleDateString("en-GB")}
+                                        </p>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </div>
                 </div>
             </div>
         </main>

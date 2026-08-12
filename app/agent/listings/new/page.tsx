@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import NewListingForm from "@/components/new-listing-form";
+import NewListingForm from "@/components/new-listing-form"; 
+import InviteVendorForm from "@/components/invite-vendor-form";
 
 export default async function NewListingPage() {
     const session = await auth();
@@ -16,6 +17,14 @@ export default async function NewListingPage() {
                     <NewListingForm />
                 </div>
             </div>
+            <details className="group mt-4 rounded-xl border border-slate-200 bg-white p-4">
+                    <summary className="cursor-pointer list-none text-sm font-medium text-action">
+                        Vendor not on BidChain yet? Invite them first
+                    </summary>
+                    <div className="mt-3 space-y-2">
+                        <InviteVendorForm />
+                    </div>
+                </details>
         </main>
     );
 }

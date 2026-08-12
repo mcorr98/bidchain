@@ -1,15 +1,16 @@
 "use client";
 
 import { useActionState } from "react";
-import { registerBidder } from "@/lib/actions/accounts";
+import { registerAccount } from "@/lib/actions/accounts";
 
 type RegisterFormProps = {
     nextPath: string;
     invitedEmail: string;
+    inviteToken: string;
 };
 
 export default function RegisterForm(props: RegisterFormProps) {
-    const [state, action, pending] = useActionState(registerBidder, null);
+    const [state, action, pending] = useActionState(registerAccount, null);
 
     let feedback = null;
     if (state !== null && "error" in state) {
@@ -51,6 +52,7 @@ export default function RegisterForm(props: RegisterFormProps) {
         <form action={action} className="space-y-4">
             {feedback}
             <input type="hidden" name="next" value={props.nextPath} />
+            <input type="hidden" name="invite_token" value={props.inviteToken} />
             <label className="block text-sm font-medium">
                 Full name
                 <input name="name" required autoComplete="name" className="mt-1 w-full rounded border border-gray-300 px-3 py-2" />
@@ -62,6 +64,10 @@ export default function RegisterForm(props: RegisterFormProps) {
                 <span className="mt-1 block text-xs font-normal text-gray-500">
                     At least 8 characters.
                 </span>
+            </label>
+            <label className="block text-sm font-medium">
+                Confirm password
+                <input name="password_confirm" type="password" required minLength={8} autoComplete="new-password" className="mt-1 w-full rounded border border-gray-300 px-3 py-2" />
             </label>
             <button type="submit" disabled={pending} className="w-full rounded bg-action px-4 py-2 font-medium text-white hover:bg-action-strong disabled:opacity-50">
                 {buttonLabel}

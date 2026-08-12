@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcrypt";
 import pool from "@/lib/db";
 
-const VALID_ROLES = ["vendor", "bidder"];
+const VALID_ROLES = ["bidder"];
 
 export async function POST(request: Request) {
     const { email, password, name, role, agency_name } = await request.json();

@@ -57,6 +57,10 @@ type AgentContactRow = {
     office_address: string | null;
 };
 
+type PendingInviteRow = {
+    email: string;
+};
+
 export default async function PropertyPage(props: PropertyPageProps) {
 
     const params = await props.params;
@@ -315,6 +319,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
     }
 
     let participants: ParticipantRow[] = [];
+    let pendingInvites: PendingInviteRow[] = [];
     if (isManaging) {
         const participantResult = await pool.query<ParticipantRow>(
             `SELECT pp.participant_id, u.name, u.email, pp.status
@@ -325,13 +330,25 @@ export default async function PropertyPage(props: PropertyPageProps) {
             [propertyId]
         );
         participants = participantResult.rows;
+
+        const pendingInvitesResult = await pool.query<PendingInviteRow>(
+            `SELECT DISTINCT i.email
+            FROM invitations i
+            WHERE i.property_id = $1 AND i.purpose = 'bidder_invite' AND i.accepted_at IS NULL AND i.expires_at > NOW() AND NOT EXISTS (
+                SELECT 1 FROM property_participants pp
+                JOIN users u ON u.user_id = pp.user_id
+                WHERE pp.property_id = $1 AND u.email = i.email
+            )`,
+            [propertyId]
+        );
+        pendingInvites = pendingInvitesResult.rows;
     }
 
     // Participant section (agent view only)
     let participantSection = null;
     if (isManaging) {
         let participantList;
-        if (participants.length === 0) {
+        if (participants.length === 0 && pendingInvites.length === 0) {
             participantList = (
                 <p className="text-sm text-gray-500">No bidders yet. Invite a bidder to get started.</p>
             );
@@ -358,6 +375,18 @@ export default async function PropertyPage(props: PropertyPageProps) {
                             </li>
                         );
                     })}
+                    {pendingInvites.map((invite) => (
+                        <li key={invite.email} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 py-2 opacity-60">
+                            <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-ink">{invite.email}</p>
+                                <p className="truncate text-xs text-gray-500">No account yet</p>
+                            </div>
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-600">
+                                invited
+                            </span>
+                            <ReinviteButton propertyId={property.property_id} email={invite.email} />
+                        </li>
+                    ))}
                 </ul>
             )
         }

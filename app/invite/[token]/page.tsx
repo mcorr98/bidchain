@@ -23,6 +23,14 @@ type InvitationRow = {
     city: string | null;
 };
 
+function maskEmail(email: string): string {
+    const [address, domain] = email.split("@");
+    if (address.length <= 2) {
+        return address[0] + "***@" + domain;
+    }
+    return address[0] + "***" + address[address.length - 1] + "@" + domain;
+}
+
 export default async function InvitePage(props: InvitePageProps) {
     const params = await props.params;
     const tokenHash = hashToken(params.token);
@@ -57,20 +65,31 @@ export default async function InvitePage(props: InvitePageProps) {
         );
     }
 
+    // Purpose branch 
+    let heading;
+    let subheading;
+    if (invitation.purpose === "vendor_activation") {
+        heading = "Activate your vendor account";
+        subheading = "Your estate agent has invited you to follow your sale on BidChain.";
+    } else {
+        heading = "You've been invited to bid";
+        subheading = invitation.address_line_1 + ", " + invitation.city;
+    }
+
     // Session branch
-    const session = await auth(); 
+    const session = await auth();
 
     let body;
     if (session === null) {
         body = (
             <div className="space-y-3">
                 <p className="text-sm text-gray-600">
-                    Sign in as <span className="font-medium">{invitation.email}</span> to accept, or create an account with that address.
+                    Sign in as <span className="font-medium">{maskEmail(invitation.email)}</span> to accept, or create an account with that address.
                 </p>
                 <Link href={`/login?next=/invite/${params.token}`} className="block rounded bg-action px-4 py-2 text-center font-medium text-white hover:bg-action-strong">
                     Sign in
                 </Link>
-                <Link href={`/register?next=/invite/${params.token}&email=${encodeURIComponent(invitation.email)}`} className="block rounded border border-slate-300 px-4 py-2 text-center text-sm hover:bg-slate-50">
+                <Link href={`/register?next=/invite/${params.token}`} className="block rounded border border-slate-300 px-4 py-2 text-center text-sm hover:bg-slate-50">
                     Create an account
                 </Link>
             </div>
@@ -78,7 +97,7 @@ export default async function InvitePage(props: InvitePageProps) {
     } else if (session.user.email !== invitation.email) {
         body = (
             <p className="text-sm text-gray-600">
-               This invitation was sent to a different email address. Sign out and sign in with the invited account.
+                This invitation was sent to a different email address. Sign out and sign in with the invited account.
             </p>
         );
     } else {
@@ -88,10 +107,8 @@ export default async function InvitePage(props: InvitePageProps) {
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
             <div className="mx-auto max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-                <h1 className="mb-2 text-xl font-semibold text-brand">You&apos;ve been invited to bid</h1>
-                <p className="mb-6 text-sm text-gray-600">
-                    {invitation.address_line_1}, {invitation.city}
-                </p>
+                <h1 className="mb-2 text-xl font-semibold text-brand">{heading}</h1>
+                <p className="mb-6 text-sm text-gray-600">{subheading}</p>
                 {body}
             </div>
         </main>

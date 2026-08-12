@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import pool from "@/lib/db";
 import { canManageProperty } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
-import { makeInvitationToken, hashToken, invitationExpiry } from "@/lib/invitations";
+import { makeInvitationToken, hashToken, invitationExpiry } from "@/lib/invitations"; 
+import { sendBidderInviteEmail } from "@/lib/email";
 
 type InvitationLockRow = {
     invitation_id: number;
@@ -12,7 +13,8 @@ type InvitationLockRow = {
     property_id: number | null;
     expires_at: Date;
     accepted_at: Date | null;
-    created_by: number;
+    created_by: number; 
+    purpose: string;
 };
 
 export async function inviteBidder(propertyId: number, _previousState: unknown, formData: FormData) {
@@ -61,12 +63,21 @@ export async function inviteBidder(propertyId: number, _previousState: unknown, 
 
     const link = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${token}`;
 
+    const addressResult = await pool.query<{ address_line_1: string; city: string }>(
+        `SELECT address_line_1, city FROM properties WHERE property_id = $1`,
+        [propertyId]
+    );
+    const propertyAddress = addressResult.rows[0].address_line_1 + ", " + addressResult.rows[0].city;
+
+    const emailed = await sendBidderInviteEmail(invitedEmail, propertyAddress, link);
+
     revalidatePath(`/properties/${propertyId}`);
-    return { success: true, link };
+    return { success: true, emailed, email: invitedEmail };
 }
 
 export async function acceptInvitation(token: string, _previousState: unknown, formData: FormData) {
     const session = await auth();
+    let redirectPath = "/properties";
 
     if (!session) {
         redirect("/login");
@@ -80,7 +91,7 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
     try {
         await client.query("BEGIN");
         const result = await client.query<InvitationLockRow>(
-            `SELECT invitation_id, email, property_id, expires_at, accepted_at, created_by
+            `SELECT invitation_id, purpose, email, property_id, expires_at, accepted_at, created_by
             FROM invitations WHERE token_hash = $1 FOR UPDATE`,
             [tokenHash]
         );
@@ -103,18 +114,36 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
             await client.query("ROLLBACK");
             return { error: "This invitation was sent to a different email address." };
         }
-        if (invitation.property_id === null) {
-            await client.query("ROLLBACK");
-            return { error: "This invitation isn't linked to an existing property." };
-        }
 
-        await client.query(
-            `INSERT INTO property_participants (property_id, user_id, status, invited_by, joined_at)
-            VALUES ($1, $2, 'joined', $3, NOW())
-            ON CONFLICT (property_id, user_id)
-            DO UPDATE SET status = 'joined', joined_at = NOW()`,
-            [invitation.property_id, userId, invitation.created_by]
-        );
+        if (invitation.purpose === "bidder_invite") {
+            if (invitation.property_id === null) {
+                await client.query("ROLLBACK");
+                return { error: "This invitation isn't linked to an existing property." };
+            }
+
+            await client.query(
+                `INSERT INTO property_participants (property_id, user_id, status, invited_by, joined_at)
+                VALUES ($1, $2, 'joined', $3, NOW())
+                ON CONFLICT (property_id, user_id)
+                DO UPDATE SET status = 'joined', joined_at = NOW()`,
+                [invitation.property_id, userId, invitation.created_by]
+            );
+            redirectPath = "/properties";
+
+        } else {
+            if (session.user.role !== "vendor") {
+                await client.query("ROLLBACK");
+                return { error: "This activation link is for a vendor account." };
+            }
+
+            await client.query(
+                `INSERT INTO vendor_profiles (user_id, created_by, activated_at)
+                 VALUES ($1, $2, NOW())
+                 ON CONFLICT (user_id) DO NOTHING`,
+                [userId, invitation.created_by]
+            );
+            redirectPath = "/vendor/properties";
+        }
 
         await client.query(
             `UPDATE invitations SET accepted_at = NOW(), accepted_by = $1 WHERE invitation_id = $2`,
@@ -130,6 +159,6 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
         client.release();
     }
 
-    redirect("/properties");
+    redirect(redirectPath);
 }
 
