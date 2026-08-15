@@ -3,7 +3,7 @@ import pool from "@/lib/db";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { canBidOn } from "@/lib/permissions";
+import { canBidOn, hasBidderProfile } from "@/lib/permissions";
 import { hashEvent, makeNonce, GENESIS_HASH, EventPreimage, EventType, JsonValue } from "@/lib/chain";
 import { BiddingState } from "@/lib/types";
 
@@ -30,11 +30,11 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
         redirect("/login");
     }
 
-    if (session.user.role !== "bidder") {
-        return { error: "Only 'bidder' users can place bids on a property" };
-    }
-
     const bidderId = Number(session.user.id);
+
+    if (!(await hasBidderProfile(bidderId))) {
+        return { error: "Only verified bidders can place bids on a property" };
+    }
 
     const property = await pool.query(`SELECT property_id, state FROM properties WHERE properties.property_id = $1`, [propertyId]);
 
@@ -185,11 +185,13 @@ export async function withdrawBid(propertyId: number, offerId: number, _previous
         redirect("/login");
     }
 
-    if (session.user.role !== "bidder") {
-        return { error: "Only bidders can withdraw an offer" };
+        const bidderId = Number(session.user.id);
+
+
+    if (!(await hasBidderProfile(bidderId))) {
+        return { error: "Only verified bidders can withdraw an offer" };
     }
 
-    const bidderId = Number(session.user.id);
 
     const reasonRaw = formData.get("reason");
     let reason: string | null;

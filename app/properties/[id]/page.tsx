@@ -17,6 +17,7 @@ import WithdrawListingForm from "@/components/withdraw-listing-form";
 import ReinviteButton from "@/components/reinvite-button";
 import SectionHeading from "@/components/section-heading";
 import { HandCoins, Users, Link2, ChevronDown, Globe } from "lucide-react";
+import PublishListingButton from "@/components/publish-listing-button";
 
 type PropertyRouteParams = {
     id: string;
@@ -95,7 +96,8 @@ export default async function PropertyPage(props: PropertyPageProps) {
 
     // Permissions 
     let canBid = false;
-    if (session?.user.role === "bidder") {
+    const isDraft = property.state === "draft";
+    if (session !== null) {
         canBid = await canBidOn(property.property_id, userId);
     }
     let isManaging = false;
@@ -103,7 +105,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
         isManaging = await canManageProperty(property.property_id, userId);
     }
     let isVendor = false;
-    if (session?.user.role === "vendor") {
+    if (session !== null) {
         isVendor = await isPropertyVendor(property.property_id, userId);
     }
 
@@ -119,8 +121,12 @@ export default async function PropertyPage(props: PropertyPageProps) {
         vendorContact = vendorContactResult.rows[0] ?? null;
     }
 
+    if (isDraft && !isManaging && !isVendor) {
+        notFound();
+    }
+
     let agentContact: AgentContactRow | null = null;
-    if (session?.user.role === "bidder") {
+    if (session !== null && !isManaging && !isVendor) {
         const agentContactResult = await pool.query<AgentContactRow>(
             `SELECT u.name, ap.agency_name, ap.phone, ap.office_address
             FROM agent_profiles ap
@@ -151,16 +157,24 @@ export default async function PropertyPage(props: PropertyPageProps) {
     let actionSection;
     if (canBid && property.state === "open") {
         actionSection = <BidForm propertyId={property.property_id} />;
-    } else if (session?.user.role === "bidder" && property.state !== "open") {
-        actionSection = <p className="text-sm text-gray-500">Bidding is closed.</p>;
-    } else if (session?.user.role === "bidder") {
-        actionSection = <p className="text-sm text-gray-500">Bidding is open to invited participants.</p>;
+    } else if (isManaging && isDraft) {
+        if (property.vendor_id === null) {
+            actionSection = <p className="text-sm text-gray-500">Waiting for the vendor to accept their invitation — publishing unlocks when they do.</p>;
+        } else {
+            actionSection = <PublishListingButton propertyId={property.property_id} />;
+        }
     } else if (isManaging) {
         actionSection = <p className="text-sm text-gray-500">Bidding is {property.state}.</p>;
     } else if (session?.user.role === "agent") {
         actionSection = <p className="text-sm text-gray-500">You don't manage this property.</p>;
+    } else if (isVendor && isDraft) {
+        actionSection = <p className="text-sm text-gray-500">You've accepted this listing: your agent will publish it when ready.</p>;
     } else if (isVendor) {
         actionSection = <p className="text-sm text-gray-500">You are the vendor of this property.</p>;
+    } else if (session !== null && property.state !== "open") {
+        actionSection = <p className="text-sm text-gray-500">Bidding is closed.</p>;
+    } else if (session !== null) {
+        actionSection = <p className="text-sm text-gray-500">Bidding is open to invited participants.</p>;
     }
 
     // Offers section 
@@ -170,7 +184,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
     }
 
     let offersSection = null;
-    if (canSeeChain) {
+    if (canSeeChain && !isDraft) {
         let offersContent;
         const offersResult = await pool.query<OfferRow>(
             `SELECT o.offer_id, o.current_amount, o.conditions, o.status, o.created_at, o.bidder_id, u.name
@@ -204,7 +218,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                         }
 
                         let withdrawControl = null;
-                        if (session?.user.role === "bidder" && offer.bidder_id === userId && (property.state === "open" || property.state === "closed")) {
+                        if (offer.bidder_id === userId && (property.state === "open" || property.state === "closed")) {
                             withdrawControl = <WithdrawBidButton propertyId={property.property_id} offerId={offer.offer_id} />;
                         }
                         return (
@@ -236,7 +250,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
 
     // Chain section
     let chainSection = null;
-    if (canSeeChain) {
+    if (canSeeChain && !isDraft) {
         let badge;
         const eventsResult = await pool.query<EventRow & { actor_name: string }>(
             `SELECT e.property_id, e.sequence, e.event_type, e.actor_id, e.timestamp, e.details, e.canonical_details, e.nonce, e.hash, e.prev_hash, u.name AS actor_name 
@@ -320,7 +334,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
 
     let participants: ParticipantRow[] = [];
     let pendingInvites: PendingInviteRow[] = [];
-    if (isManaging) {
+    if (isManaging && !isDraft) {
         const participantResult = await pool.query<ParticipantRow>(
             `SELECT pp.participant_id, u.name, u.email, pp.status
             FROM property_participants pp
@@ -346,7 +360,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
 
     // Participant section (agent view only)
     let participantSection = null;
-    if (isManaging) {
+    if (isManaging && !isDraft) {
         let participantList;
         if (participants.length === 0 && pendingInvites.length === 0) {
             participantList = (
@@ -407,10 +421,16 @@ export default async function PropertyPage(props: PropertyPageProps) {
     }
 
     let stateBadge = null;
-    if (property.state !== "open") {
+    if (isDraft) {
+        stateBadge = (
+            <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-medium uppercase tracking-wide text-amber-800">
+                {property.vendor_id === null ? "Draft - awaiting vendor" : "Draft - ready to publish"}
+            </span>
+        );
+    } else if (property.state !== "open") {
         stateBadge = (
             <span className="inline-flex items-center rounded-full bg-gray-200 px-3 py-1 text-xs font-medium uppercase tracking-wide text-gray-700">
-                Bidding {property.state}
+                {property.state}
             </span>
         );
     }
@@ -426,7 +446,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
     if (property.state === "sale_agreed") {
         if (isVendor) {
             canCollapse = true;
-        } else if (session?.user.role === "bidder") {
+        } else if (session !== null) {
             const accepted = await pool.query(
                 `SELECT offer_id FROM offers WHERE property_id = $1 AND status = 'accepted' AND bidder_id = $2`,
                 [propertyId, userId]

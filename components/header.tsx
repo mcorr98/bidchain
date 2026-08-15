@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { auth, signOut } from "@/auth";
 import { ChevronDown } from "lucide-react";
+import { hasBidderProfile, hasVendorProfile } from "@/lib/permissions";
 
 function initialsFor(name: string): string {
     const parts = name.trim().split(/\s+/);
@@ -16,6 +17,14 @@ function initialsFor(name: string): string {
  */
 export default async function Header() {
     const session = await auth();
+
+    let showBidderNav = false;
+    let showVendorNav = false;
+    if (session) {
+        const userId = Number(session.user.id);
+        showBidderNav = await hasBidderProfile(userId);
+        showVendorNav = await hasVendorProfile(userId);
+    }
 
     let accountArea;
     if (session) {
@@ -73,22 +82,22 @@ export default async function Header() {
             </Link>
             {accountArea}
         </nav>;
-    } else if (session?.user.role === "bidder") {
+    } else if (session) {
         propertiesLink = <nav className="flex items-center gap-6">
-            <Link href="/properties" className="px-1 py-1.5 text-sm text-gray-700 hover:text-gray-900">
-                My bids
-            </Link>
+            {showBidderNav && (
+                <Link href="/properties" className="px-1 py-1.5 text-sm text-gray-700 hover:text-gray-900">
+                    My bids
+                </Link>
+            )}
+            {showVendorNav && (
+                <Link href="/vendor/properties" className="px-1 py-1.5 text-sm text-gray-700 hover:text-gray-900">
+                    My properties
+                </Link>
+            )}
             {accountArea}
-        </nav>
-    } else if (session?.user.role === "vendor") {
-        propertiesLink = <nav className="flex items-center gap-6">
-            <Link href="/vendor/properties" className="px-1 py-1.5 text-sm text-gray-700 hover:text-gray-900">
-                My bids
-            </Link>
-            {accountArea}
-        </nav>
+        </nav>;
     }
-
+    
     return (
         <header className="border-b border-gray-200 bg-white">
             <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">

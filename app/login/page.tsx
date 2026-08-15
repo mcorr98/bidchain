@@ -72,7 +72,7 @@ export default async function LoginPage(props: LoginPageProps) {
 
                     <p className="mt-6 text-sm text-gray-600">
                         No account yet?{" "}
-                        <Link href={`/register?next=%{encodedNext}`} className="underline">
+                        <Link href={`/register?next=${encodedNext}`} className="underline">
                             Register as a buyer
                         </Link>
                     </p>

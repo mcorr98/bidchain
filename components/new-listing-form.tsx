@@ -28,9 +28,6 @@ export default function NewListingForm() {
             <label className="block text-sm font-medium">
                 Vendor email
                 <input name="vendor_email" type="email" required defaultValue={state?.values?.vendor_email} className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2" />
-                <span className="mt-1 block text-xs font-normal text-gray-500">
-                    The vendor must already have an account.
-                </span>
             </label>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

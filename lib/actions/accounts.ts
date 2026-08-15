@@ -3,10 +3,9 @@
 import bcrypt from "bcrypt";
 import pool from "@/lib/db";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
-import { makeInvitationToken, hashToken, invitationExpiry } from "@/lib/invitations";
-import { sendVendorActivationEmail } from "@/lib/email";
-import { isActiveAgency } from "@/lib/permissions"; 
+
+import { hashToken } from "@/lib/invitations";
+
 
 type RegistrationInviteRow = {
     purpose: string;
@@ -93,51 +92,4 @@ export async function registerAccount(_previousState: unknown, formData: FormDat
         loginUrl = `/login?next=${encodeURIComponent(nextPath)}`;
     }
     redirect(loginUrl);
-}
-
-export async function inviteVendor(_previousState: unknown, formData: FormData) {
-
-    const session = await auth();
-    if (!session) {
-        redirect("/login");
-    }
-    if (session.user.role !== "agent") {
-        return { error: "Only agents can invite vendors" };
-    }
-    const agentId = Number(session.user.id);
-
-    if (!(await isActiveAgency(agentId))) {
-        return { error: "Your agency account has not been activated" };
-    }
-
-    const vendorEmail = formData.get("email");
-    if (typeof vendorEmail !== "string" || vendorEmail.trim() === "") {
-        return { error: "Enter the vendor's email address" };
-    }
-
-    const existing = await pool.query<{ role: string }>(
-        `SELECT role FROM users WHERE email = $1`,
-        [vendorEmail]
-    );
-    if (existing.rowCount !== null && existing.rowCount > 0) {
-        if (existing.rows[0].role === "vendor") {
-            return { error: "That email already has a vendor account: use it directly when creating the listing" };
-        }
-        return { error: "That email is already registered as a " + existing.rows[0].role + " account" };
-    }
-
-    const token = makeInvitationToken();
-    const tokenHash = hashToken(token);
-    const expiryDate = invitationExpiry();
-
-    await pool.query(
-        `INSERT INTO invitations (token_hash, email, purpose, property_id, created_by, expires_at)
-         VALUES ($1, $2, 'vendor_activation', NULL, $3, $4)`,
-        [tokenHash, vendorEmail, agentId, expiryDate]
-    );
-
-    const link = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${token}`;
-    const emailed = await sendVendorActivationEmail(vendorEmail, link);
-
-    return { success: true, emailed, email: vendorEmail };
 }

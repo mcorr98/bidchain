@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import pool from "@/lib/db";
 import { canManageProperty } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
-import { makeInvitationToken, hashToken, invitationExpiry } from "@/lib/invitations"; 
+import { makeInvitationToken, hashToken, invitationExpiry } from "@/lib/invitations";
 import { sendBidderInviteEmail } from "@/lib/email";
 
 type InvitationLockRow = {
@@ -13,7 +13,7 @@ type InvitationLockRow = {
     property_id: number | null;
     expires_at: Date;
     accepted_at: Date | null;
-    created_by: number; 
+    created_by: number;
     purpose: string;
 };
 
@@ -29,7 +29,7 @@ export async function inviteBidder(propertyId: number, _previousState: unknown, 
     const invitedEmail = formData.get("email");
 
     if (session.user.role !== "agent") {
-        return { error: "Only 'agent' users can invite participants to a property" };
+        return { error: "Only an agent can invite participants to a property" };
     }
 
     if (typeof invitedEmail !== "string") {
@@ -39,6 +39,15 @@ export async function inviteBidder(propertyId: number, _previousState: unknown, 
     if (!(await canManageProperty(propertyId, userId))) {
         return { error: "Property not under the administration of this agent" };
     }
+
+    const propertyResult = await pool.query<{ state: string; address_line_1: string; city: string }>(
+        `SELECT state, address_line_1, city FROM properties WHERE property_id = $1`,
+        [propertyId]
+    );
+    if (propertyResult.rowCount === 0 || propertyResult.rows[0].state !== "open") {
+        return { error: "Bidders can only be invited while bidding is open" };
+    }
+    const propertyAddress = propertyResult.rows[0].address_line_1 + ", " + propertyResult.rows[0].city;
 
     const token = makeInvitationToken();
     const tokenHash = hashToken(token);
@@ -62,12 +71,6 @@ export async function inviteBidder(propertyId: number, _previousState: unknown, 
     );
 
     const link = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${token}`;
-
-    const addressResult = await pool.query<{ address_line_1: string; city: string }>(
-        `SELECT address_line_1, city FROM properties WHERE property_id = $1`,
-        [propertyId]
-    );
-    const propertyAddress = addressResult.rows[0].address_line_1 + ", " + addressResult.rows[0].city;
 
     const emailed = await sendBidderInviteEmail(invitedEmail, propertyAddress, link);
 
@@ -122,6 +125,12 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
             }
 
             await client.query(
+                `INSERT INTO bidder_profiles (user_id) VALUES ($1)
+                 ON CONFLICT (user_id) DO NOTHING`,
+                [userId]
+            );
+
+            await client.query(
                 `INSERT INTO property_participants (property_id, user_id, status, invited_by, joined_at)
                 VALUES ($1, $2, 'joined', $3, NOW())
                 ON CONFLICT (property_id, user_id)
@@ -131,18 +140,28 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
             redirectPath = "/properties";
 
         } else {
-            if (session.user.role !== "vendor") {
+            if (session.user.role === "agent") {
                 await client.query("ROLLBACK");
-                return { error: "This activation link is for a vendor account." };
+                return { error: "Agents cannot hold vendor accounts for their own listings." };
             }
 
             await client.query(
                 `INSERT INTO vendor_profiles (user_id, created_by, activated_at)
-                 VALUES ($1, $2, NOW())
-                 ON CONFLICT (user_id) DO NOTHING`,
+                VALUES ($1, $2, NOW())
+                ON CONFLICT (user_id) DO NOTHING`,
                 [userId, invitation.created_by]
             );
             redirectPath = "/vendor/properties";
+
+
+            if (invitation.property_id !== null) {
+                await client.query<{ state: string; asking_price: number; listing_type: string }>(
+                    `UPDATE properties SET vendor_id = $1, updated_at = NOW()
+                    WHERE property_id = $2 AND state = 'draft' AND vendor_id IS NULL`,
+                    [userId, invitation.property_id]
+                );
+                redirectPath = `/properties/${invitation.property_id}`;
+            }
         }
 
         await client.query(
@@ -160,5 +179,6 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
     }
 
     redirect(redirectPath);
-}
+} 
+
 

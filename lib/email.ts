@@ -47,7 +47,7 @@ export async function sendBidderInviteEmail(to: string, propertyAddress: string,
 /**
  * Activation email for a vendor invited by their estate agency
  */
-export async function sendVendorActivationEmail(to: string, link: string): Promise<boolean> {
+export async function sendVendorActivationEmail(to: string, propertyAddress: string, link: string): Promise<boolean> {
     const subject = "Your BidChain vendor account";
     const text = [
         "Your estate agent has invited you to join your property on BidChain.",

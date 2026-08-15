@@ -1,5 +1,5 @@
-import pool from "../lib/db";
-import { hashEvent } from "../lib/chain";
+import pool from "../lib/db.ts";
+import { hashEvent } from "../lib/chain.ts";
 
 async function run() {
     const result = await pool.query(

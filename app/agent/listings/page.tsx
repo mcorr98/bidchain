@@ -6,7 +6,6 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import StatCard from "@/components/stats-card";
-import InviteVendorForm from "@/components/invite-vendor-form";
 
 type AgentStats = {
     total_listings: string;
@@ -36,7 +35,7 @@ type ActivityRow = {
 };
 
 /**
- * "Listings" dashboard which can be viewed by a logged in agent, surfacing key information
+ * "Listings" dashboard which can be viewed by a logged in agent, highlighting key information the agent might need
  * @returns - listings page content HTML
  */
 export default async function AgentListingsPage() {
@@ -142,11 +141,7 @@ export default async function AgentListingsPage() {
                                         <span className="ml-1 font-normal text-gray-500">
                                             ({listing.offer_count})
                                         </span>
-                                        <div className="flex items-center gap-3">
-                                            <p className="text-sm">{topOfferLine}</p>
-                                        </div>
                                     </span>
-
                                 );
 
                             }
@@ -183,12 +178,6 @@ export default async function AgentListingsPage() {
                 </div>
 
                 <div className="space-y-6">
-                    <div className="space-y-2">
-                        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Invite vendor</h2>
-                        <div className="rounded-xl border border-slate-200 bg-white p-4">
-                            <InviteVendorForm />
-                        </div>
-                    </div>
                     <div>
                         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Recent bids</h2>
                         <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">

@@ -7,10 +7,12 @@ import { revalidatePath } from "next/cache";
 import { BiddingState } from "@/lib/types";
 import { redirect } from "next/navigation";
 import { ListingType } from "@/lib/types";
-import { isActiveAgency } from "@/lib/permissions";
+import { isActiveAgency, hasVendorProfile } from "@/lib/permissions";
 import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { sendVendorActivationEmail } from "@/lib/email";
+import { hashToken, invitationExpiry, makeInvitationToken } from "../invitations";
 
 type ParsedOptionalWholeNumber = number | null | "invalid";
 
@@ -19,7 +21,7 @@ const ALLOWED_IMAGE_TYPES: Record<string, string> = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
     "image/webp": ".webp",
-}; 
+};
 
 // On validation failure  submitted values are returned with the error so
 // the form can maintain the typed values
@@ -154,16 +156,28 @@ export async function createListing(_previousState: unknown, formData: FormData)
     if (typeof vendorEmail !== "string" || vendorEmail === "") {
         return { error: "Enter the vendor's email address", values: formValues(formData) };
     }
-    const vendorResult = await pool.query<{ user_id: number }>(
-        `SELECT user_id FROM users WHERE email = $1 AND role = $2`,
-        [vendorEmail, "vendor"]
+    const userResult = await pool.query<{ user_id: number; role: string }>(
+        `SELECT user_id, role FROM users WHERE email = $1`,
+        [vendorEmail]
     );
-    if (vendorResult.rowCount === null || vendorResult.rowCount < 1) {
-        return { error: "No vendor found with that email: create their account first", values: formValues(formData) };
+
+    let vendorId: number | null = null;
+    if (userResult.rowCount !== null && userResult.rowCount > 0) {
+        const existingUser = userResult.rows[0];
+        if (existingUser.role === "agent") {
+            return { error: "That email belongs to an agent account: agents cannot also be registered as vendors", values: formValues(formData) };
+        }
+        if (await hasVendorProfile(existingUser.user_id)) {
+            vendorId = existingUser.user_id;
+        }
+
+        // An existing account without a vendor profile purposefully will leave
+        // vendorId null. The DB transaction below creates a draft listing, and invites
+        // this email. After acceptance we attach the vendor profile to the account they already have.
+        
     }
 
     // Property details validation block 
-    const vendorId = vendorResult.rows[0].user_id;
     const addressLine1 = formData.get("address_line_1");
     let addressLine2: string | null = null;
     const addressLine2Raw = formData.get("address_line_2");
@@ -208,7 +222,6 @@ export async function createListing(_previousState: unknown, formData: FormData)
         await writeFile(path.join(uploadDir, storedImageName), imageBuffer);
     }
 
-
     // Property price validation block 
     const pounds = Number(formData.get("asking_price"));
     if (Number.isNaN(pounds)) {
@@ -222,7 +235,6 @@ export async function createListing(_previousState: unknown, formData: FormData)
     }
     const askingPricePence = pounds * 100;
 
-
     // Listing type validation block 
     const listingTypeRaw = formData.get("listing_type");
     let listingType: ListingType;
@@ -231,7 +243,6 @@ export async function createListing(_previousState: unknown, formData: FormData)
     } else {
         return { error: "Choose a listing type", values: formValues(formData) };
     }
-
 
     // Optional details validation block 
     const bedrooms = parseOptionalWholeNumber(formData.get("bedrooms"));
@@ -257,27 +268,99 @@ export async function createListing(_previousState: unknown, formData: FormData)
         listingUrl = listingUrlRaw;
     }
 
-
     // DB transaction
     const client = await pool.connect();
     let propertyId: number;
+    let inviteToken: string | null = null;
 
     try {
         await client.query("BEGIN");
 
-        const propertyInsert = await client.query<{ property_id: number }>(
-            `INSERT INTO properties (vendor_id, agent_id, address_line_1, address_line_2, city, postcode, asking_price, bedrooms, bathrooms, receptions, listing_url, listing_type, image_path)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-             RETURNING property_id`,
-            [vendorId, agentId, addressLine1, addressLine2, city, postcode, askingPricePence, bedrooms, bathrooms, receptions, listingUrl, listingType, imagePath]
+        const draftInsert = await client.query<{ property_id: number }>(
+            `INSERT INTO properties (vendor_id, agent_id, address_line_1, address_line_2, city, postcode, asking_price, bedrooms, bathrooms, receptions, listing_type, listing_url, image_path, status, state)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'draft', 'draft')
+            RETURNING property_id`,
+            [vendorId, agentId, addressLine1, addressLine2, city, postcode, askingPricePence, bedrooms, bathrooms, receptions, listingType, listingUrl, imagePath]
+        );
+        propertyId = draftInsert.rows[0].property_id;
+
+        if (vendorId === null) {
+            inviteToken = makeInvitationToken();
+            await client.query(
+                `INSERT INTO invitations (token_hash, email, purpose, property_id, created_by, expires_at)
+                VALUES ($1, $2, 'vendor_activation', $3, $4, $5)`,
+                [hashToken(inviteToken), vendorEmail, propertyId, agentId, invitationExpiry()]
+            );
+        }
+
+        await client.query("COMMIT");
+
+    } catch (err) {
+        console.error("createListing transaction failed:", err);
+        await client.query("ROLLBACK");
+        return { error: "Something went wrong creating the listing", values: formValues(formData) };
+    } finally {
+        client.release();
+    }
+
+    // Email is best-effort so it lives outside the transaction to make sure a failed email doesn't rollback a created draft.
+    if (inviteToken !== null) {
+        const link = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${inviteToken}`;
+        await sendVendorActivationEmail(vendorEmail, addressLine1 + ", " + city, link);
+    }
+
+    revalidatePath("/agent/listings");
+    redirect(`/properties/${propertyId}`);
+}
+
+/**
+ * Publishes a draft listing. Requires the vendor to have
+ * accepted their invitation first
+ * @param propertyId - the draft to publish
+ * @returns - { error: string } on failed checks, { success: true } on publish
+ */
+export async function publishListing(propertyId: number, _previousState: unknown, formData: FormData) {
+
+    const session = await auth();
+    if (!session) {
+        redirect("/login");
+    }
+    if (session.user.role !== "agent") {
+        return { error: "Only agents can publish a listing" };
+    }
+    const agentId = Number(session.user.id);
+
+    if (!(await isActiveAgency(agentId))) {
+        return { error: "Your agency account has not been activated" };
+    }
+    if (!(await canManageProperty(propertyId, agentId))) {
+        return { error: "You don't manage this property" };
+    }
+
+    const client = await pool.connect();
+
+    try {
+        await client.query("BEGIN");
+
+        const locked = await client.query<{ state: BiddingState; vendor_id: number | null; asking_price: number; listing_type: string }>(
+            `SELECT state, vendor_id, asking_price, listing_type FROM properties
+            WHERE property_id = $1 FOR UPDATE`,
+            [propertyId]
         );
 
-        propertyId = propertyInsert.rows[0].property_id;
+        if (locked.rows[0].state !== "draft") {
+            await client.query("ROLLBACK");
+            return { error: "Only a draft listing can be published" };
+        }
+        if (locked.rows[0].vendor_id === null) {
+            await client.query("ROLLBACK");
+            return { error: "The vendor hasn't accepted their invitation yet" };
+        }
 
         const timestamp = new Date().toISOString();
         const details = {
-            asking_price_snapshot: askingPricePence,
-            listing_type_snapshot: listingType,
+            asking_price_snapshot: locked.rows[0].asking_price,
+            listing_type_snapshot: locked.rows[0].listing_type,
         };
         const nonce = makeNonce();
         const preimage: EventPreimage = {
@@ -294,22 +377,29 @@ export async function createListing(_previousState: unknown, formData: FormData)
 
         await client.query(
             `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [propertyId, 1, "LISTING_CREATED", agentId, timestamp, details, canonicalDetails, nonce, hash, GENESIS_HASH]
+        );
+
+        await client.query(
+            `UPDATE properties SET state = 'open', status = 'active', updated_at = NOW()
+            WHERE property_id = $1`,
+            [propertyId]
         );
 
         await client.query("COMMIT");
 
     } catch (err) {
-        console.error("createListing transaction failed:", err);
+        console.error("publishListing transaction failed:", err);
         await client.query("ROLLBACK");
-        return { error: "Something went wrong creating the listing", values: formValues(formData) };
+        return { error: "Something went wrong publishing the listing" };
     } finally {
         client.release();
     }
 
+    revalidatePath(`/properties/${propertyId}`);
     revalidatePath("/agent/listings");
-    redirect(`/properties/${propertyId}`);
+    return { success: true };
 }
 
 function parseOptionalWholeNumber(value: FormDataEntryValue | null): ParsedOptionalWholeNumber {
@@ -329,10 +419,6 @@ export async function acceptBid(propertyId: number, offerId: number, _previousSt
 
     if (!session) {
         redirect("/login");
-    }
-
-    if (session.user.role !== "vendor") {
-        return { error: "Only the vendor can accept an offer" };
     }
 
     const vendorId = Number(session.user.id);
@@ -586,9 +672,9 @@ export async function collapseSale(propertyId: number, _previousState: unknown, 
         const failedOffer = acceptedOffer.rows[0];
 
         let initiatedBy: "buyer" | "vendor";
-        if (session.user.role === "vendor" && (await isPropertyVendor(propertyId, userId))) {
+        if (await isPropertyVendor(propertyId, userId)) {
             initiatedBy = "vendor";
-        } else if (session.user.role === "bidder" && failedOffer.bidder_id === userId) {
+        } else if (failedOffer.bidder_id === userId) {
             initiatedBy = "buyer";
         } else {
             await client.query("ROLLBACK");
@@ -835,7 +921,7 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
 
         const tail = await client.query(
             `SELECT sequence, hash FROM events
-            WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
+                WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
             [propertyId]
         );
 
@@ -869,14 +955,14 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
 
         await client.query(
             `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [propertyId, sequence, "LISTING_WITHDRAWN", agentId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
         );
 
         // Any live offers expire with the listing
         await client.query(
             `UPDATE offers SET status = $1, updated_at = NOW()
-            WHERE property_id = $2 AND status = $3`,
+                WHERE property_id = $2 AND status = $3`,
             ["expired", propertyId, "active"]
         );
 
@@ -884,7 +970,7 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
         leaves the market.*/
         await client.query(
             `UPDATE properties SET state = $1, status = $2, updated_at = NOW()
-             WHERE property_id = $3`,
+                WHERE property_id = $3`,
             ["withdrawn", "withdrawn", propertyId]
         );
 

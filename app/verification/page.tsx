@@ -2,13 +2,14 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import pool from "@/lib/db";
 import VerificationForm from "@/components/verification-form";
+import { hasBidderProfile } from "@/lib/permissions";
 
 export default async function VerificationPage() {
   const session = await auth();
   if (!session || !session.user) {
     redirect("/login");
   }
-  if (session.user.role !== "bidder") {
+  if (!(await hasBidderProfile(Number(session.user.id)))) {
     redirect("/");
   }
 
@@ -66,9 +67,8 @@ export default async function VerificationPage() {
 
       {hasDocument && (
         <p className="text-sm">
-          You can replace your document at any time (for example if your ID has
-          been renewed). Existing agency verifications will not be impacted, and new
-          agencies will review the latest document.
+          You can replace your document at any time (for example if your ID has been renewed). Existing agency verifications will not be impacted,
+          and newagencies will review the latest document.
         </p>
       )}
 

@@ -20,7 +20,7 @@ export default async function PropertiesPage() {
         SELECT p.property_id, p.address_line_1, p.city, p.postcode, p.listing_type, p.asking_price, p.image_path, p.bedrooms, p.bathrooms, p.receptions, p.state
         FROM properties p 
         JOIN property_participants pp ON pp.property_id = p.property_id 
-        WHERE pp.user_id = $1 AND pp.status = $2 AND p.status = $3 ORDER BY p.created_at DESC`,
+        WHERE pp.user_id = $1 AND pp.status = $2 AND p.status = $3 AND p.state != 'draft' ORDER BY p.created_at DESC`,
         [session.user.id, "joined", "active"]);
 
     const properties = result.rows;

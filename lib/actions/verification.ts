@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import pool from "@/lib/db";
 import { redirect } from "next/navigation";
-import { isActiveAgency } from "@/lib/permissions";
+import { isActiveAgency, hasBidderProfile } from "@/lib/permissions";
 
 export type VerificationFormState = {
   status: "idle" | "error" | "success";
@@ -22,11 +22,12 @@ const ALLOWED_TYPES: Record<string, string> = {
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
 export async function submitVerification(prevState: VerificationFormState, formData: FormData): Promise<VerificationFormState> {
+
   const session = await auth();
   if (!session || !session.user) {
     return { status: "error", message: "You must be signed in." };
   }
-  if (session.user.role !== "bidder") {
+  if (!(await hasBidderProfile(Number(session.user.id)))) {
     return { status: "error", message: "Only bidders submit verification." };
   }
 
@@ -155,7 +156,7 @@ export async function decideVerification(bidderId: number, _previousState: unkno
 
     const profileResult = await client.query<{ id_document_hash: string | null }>(
       `SELECT id_document_hash FROM bidder_profiles
-            WHERE user_id = $1 FOR UPDATE`,
+      WHERE user_id = $1 FOR UPDATE`,
       [bidderId]
     );
 
@@ -173,9 +174,11 @@ export async function decideVerification(bidderId: number, _previousState: unkno
     await client.query("COMMIT");
 
   } catch (err) {
+
     console.error("decideVerification transaction failed:", err);
     await client.query("ROLLBACK");
     return { error: "Something went wrong recording the decision" };
+
   } finally {
     client.release();
   }

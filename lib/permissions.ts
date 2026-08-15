@@ -81,13 +81,13 @@ export async function canManageProperty(propertyId: number, userId: number): Pro
  * @returns true is vendor is the seller of the property, false if not 
  */
 export async function isPropertyVendor(propertyId: number, userId: number): Promise<boolean> {
-    const vendorResult = await pool.query(
+    const result = await pool.query(
         `SELECT property_id FROM properties 
         WHERE property_id = $1 AND vendor_id = $2`,
         [propertyId, userId]
     );
 
-    return hasRows(vendorResult);
+    return hasRows(result);
 }
 
 /**
@@ -146,6 +146,32 @@ export async function isActiveAgency(agentId: number): Promise<boolean> {
         `SELECT agent_profile_id FROM agent_profiles
         WHERE user_id = $1 AND activation_status = 'active'`,
         [agentId]
+    );
+    return hasRows(result);
+}
+
+/**
+ * Checks whether a user has a bidder profile.
+ * @param userId - the user being checked
+ * @returns true if a bidder profile exists for this user, otherwise false
+ */
+export async function hasBidderProfile(userId: number): Promise<boolean> {
+    const result = await pool.query(
+        `SELECT bidder_profile_id FROM bidder_profiles WHERE user_id = $1`,
+        [userId]
+    );
+    return hasRows(result);
+}
+
+/**
+ * Checks whether a user has vendor aprofile. 
+ * @param userId - the user being checked
+ * @returns true if a vendor profile exists for this user, otherwise false
+ */
+export async function hasVendorProfile(userId: number): Promise<boolean> {
+    const result = await pool.query(
+        `SELECT vendor_profile_id FROM vendor_profiles WHERE user_id = $1`,
+        [userId]
     );
     return hasRows(result);
 }

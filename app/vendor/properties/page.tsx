@@ -4,6 +4,7 @@ import { formatPrice, listingTypeLabel, featuresLine } from "@/lib/format";
 import { Property } from "@/lib/types";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
+import { hasVendorProfile } from "@/lib/permissions";
 
 
 /**
@@ -13,11 +14,15 @@ import { redirect } from "next/navigation";
 export default async function PropertiesPage() {
 
     const session = await auth();
-    if (!session || session.user.role !== "vendor") {
+    if (!session) {
         redirect("/login");
     } 
 
     let vendorId = Number(session.user.id);
+
+    if (!(await hasVendorProfile(vendorId))) {
+        redirect("/");
+    } 
 
     const result = await pool.query<Property>(
         `SELECT p.property_id, p.address_line_1, p.city, p.postcode, p.listing_type, p.asking_price, p.image_path, p.bedrooms, p.bathrooms, p.receptions, p.state
