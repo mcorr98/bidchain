@@ -85,3 +85,7 @@ export function eventTypeLabel(eventType: EventType): string {
     const unhandled: never = eventType;
     throw new Error("Unhandled event type: " + unhandled);
 }
+
+export function standardiseEmail(raw: string): string {
+    return raw.trim().toLowerCase();
+}

@@ -4,8 +4,9 @@ import { redirect } from "next/navigation";
 import pool from "@/lib/db";
 import { canManageProperty } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
-import { makeInvitationToken, hashToken, invitationExpiry } from "@/lib/invitations";
+import { makeInvitationToken, hashToken, invitationExpiry, invitationLink } from "@/lib/invitations";
 import { sendBidderInviteEmail } from "@/lib/email";
+import { standardiseEmail } from "@/lib/format";
 
 type InvitationLockRow = {
     invitation_id: number;
@@ -26,15 +27,17 @@ export async function inviteBidder(propertyId: number, _previousState: unknown, 
     }
 
     const userId = Number(session.user.id);
-    const invitedEmail = formData.get("email");
+    const invitedEmailRaw = formData.get("email");
 
     if (session.user.role !== "agent") {
         return { error: "Only an agent can invite participants to a property" };
     }
 
-    if (typeof invitedEmail !== "string") {
+    if (typeof invitedEmailRaw !== "string") {
         return { error: "Not a valid format for an email address" };
     }
+
+    const invitedEmail = standardiseEmail(invitedEmailRaw);
 
     if (!(await canManageProperty(propertyId, userId))) {
         return { error: "Property not under the administration of this agent" };
@@ -70,7 +73,7 @@ export async function inviteBidder(propertyId: number, _previousState: unknown, 
         [propertyId, userId, invitedEmail]
     );
 
-    const link = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${token}`;
+    const link = invitationLink(token);
 
     const emailed = await sendBidderInviteEmail(invitedEmail, propertyAddress, link);
 
@@ -113,7 +116,7 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
             await client.query("ROLLBACK");
             return { error: "This invitation has expired." };
         }
-        if (invitation.email !== session.user.email) {
+        if (invitation.email !== standardiseEmail(session.user.email ?? "")) {
             await client.query("ROLLBACK");
             return { error: "This invitation was sent to a different email address." };
         }

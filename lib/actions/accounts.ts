@@ -1,10 +1,9 @@
 "use server";
-
 import bcrypt from "bcrypt";
 import pool from "@/lib/db";
 import { redirect } from "next/navigation";
-
-import { hashToken } from "@/lib/invitations";
+import { hashToken } from "@/lib/invitations"; 
+import { standardiseEmail } from "@/lib/format";
 
 
 type RegistrationInviteRow = {
@@ -17,7 +16,7 @@ type RegistrationInviteRow = {
 export async function registerAccount(_previousState: unknown, formData: FormData) {
 
     const name = formData.get("name");
-    const email = formData.get("email");
+    const emailRaw = formData.get("email");
     const password = formData.get("password");
     const nextPath = formData.get("next");
     const passwordConfirm = formData.get("password_confirm");
@@ -27,9 +26,12 @@ export async function registerAccount(_previousState: unknown, formData: FormDat
     if (typeof name !== "string" || name.trim() === "") {
         return { error: "Enter your name" };
     }
-    if (typeof email !== "string" || email.trim() === "") {
+    if (typeof emailRaw !== "string" || emailRaw.trim() === "") {
         return { error: "Enter your email address" };
     }
+
+    const email = standardiseEmail(emailRaw);
+
     if (typeof password !== "string" || password.length < 8) {
         return { error: "Password must be at least 8 characters" };
     }

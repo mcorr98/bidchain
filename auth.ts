@@ -1,7 +1,8 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcrypt";
-import pool from "@/lib/db";
+import pool from "@/lib/db"; 
+import { standardiseEmail } from "@/lib/format";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
     providers: [
@@ -14,8 +15,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
                 if (!credentials?.email || !credentials?.password) return null;
 
                 const result = pool.query(
-                    "SELECT user_id, email, name, role, password_hash FROM users WHERE email = $1",
-                    [credentials.email]
+                    `SELECT user_id, email, name, role, password_hash FROM users WHERE email = $1`,
+                    [standardiseEmail(String(credentials.email))]
                 );
 
                 const user = (await result).rows[0];

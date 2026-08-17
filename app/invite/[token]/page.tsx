@@ -2,7 +2,8 @@ import { auth } from "@/auth";
 import pool from "@/lib/db";
 import { hashToken } from "@/lib/invitations";
 import Link from "next/link";
-import AcceptInvitationButton from "@/components/accept-invitation-button";
+import AcceptInvitationButton from "@/components/accept-invitation-button"; 
+import { standardiseEmail } from "@/lib/format";
 
 type InviteRouteParams = {
     token: string;
@@ -94,7 +95,7 @@ export default async function InvitePage(props: InvitePageProps) {
                 </Link>
             </div>
         );
-    } else if (session.user.email !== invitation.email) {
+    } else if (standardiseEmail(session.user.email ?? "") !== invitation.email) {
         body = (
             <p className="text-sm text-gray-600">
                 This invitation was sent to a different email address. Sign out and sign in with the invited account.

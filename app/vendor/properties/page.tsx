@@ -27,7 +27,7 @@ export default async function PropertiesPage() {
     const result = await pool.query<Property>(
         `SELECT p.property_id, p.address_line_1, p.city, p.postcode, p.listing_type, p.asking_price, p.image_path, p.bedrooms, p.bathrooms, p.receptions, p.state
         FROM properties p 
-        WHERE p.vendor_id = $1 AND p.status = 'active' 
+        WHERE p.vendor_id = $1
         ORDER BY p.created_at DESC`, 
         [vendorId]
     );

@@ -13,3 +13,11 @@ export function invitationExpiry(): string {
  export function hashToken(text: string): string {
      return createHash("sha256").update(text).digest("hex");
  }
+
+ export function invitationLink(token: string): string {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (!baseUrl) {
+        throw new Error("NEXT_PUBLIC_APP_URL is not set, meaning invitation links can't be created correctly");
+    }
+    return baseUrl + "/invite/" + token;
+}

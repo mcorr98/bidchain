@@ -12,7 +12,8 @@ import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { sendVendorActivationEmail } from "@/lib/email";
-import { hashToken, invitationExpiry, makeInvitationToken } from "../invitations";
+import { hashToken, invitationExpiry, makeInvitationToken, invitationLink } from "@/lib/invitations";
+import { standardiseEmail } from "@/lib/format";
 
 type ParsedOptionalWholeNumber = number | null | "invalid";
 
@@ -152,10 +153,11 @@ export async function createListing(_previousState: unknown, formData: FormData)
     }
 
     // Vendor validation block  
-    const vendorEmail = formData.get("vendor_email");
-    if (typeof vendorEmail !== "string" || vendorEmail === "") {
+    const vendorEmailRaw = formData.get("vendor_email");
+    if (typeof vendorEmailRaw !== "string" || vendorEmailRaw === "") {
         return { error: "Enter the vendor's email address", values: formValues(formData) };
     }
+    const vendorEmail = standardiseEmail(vendorEmailRaw);
     const userResult = await pool.query<{ user_id: number; role: string }>(
         `SELECT user_id, role FROM users WHERE email = $1`,
         [vendorEmail]
@@ -172,7 +174,7 @@ export async function createListing(_previousState: unknown, formData: FormData)
         }
 
         // An existing account without a vendor profile purposefully will leave
-        // vendorId null. The DB transaction below creates a draft listing, and invites
+        // vendorId null. The DB transaction below creates a draft listing and invites
         // this email. After acceptance we attach the vendor profile to the account they already have.
         
     }
@@ -305,7 +307,7 @@ export async function createListing(_previousState: unknown, formData: FormData)
 
     // Email is best-effort so it lives outside the transaction to make sure a failed email doesn't rollback a created draft.
     if (inviteToken !== null) {
-        const link = `${process.env.NEXT_PUBLIC_APP_URL}/invite/${inviteToken}`;
+        const link = invitationLink(inviteToken);
         await sendVendorActivationEmail(vendorEmail, addressLine1 + ", " + city, link);
     }
 

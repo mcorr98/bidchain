@@ -188,10 +188,10 @@ export default async function PropertyPage(props: PropertyPageProps) {
         let offersContent;
         const offersResult = await pool.query<OfferRow>(
             `SELECT o.offer_id, o.current_amount, o.conditions, o.status, o.created_at, o.bidder_id, u.name
-        FROM offers o
-        JOIN users u ON u.user_id = o.bidder_id
-        WHERE o.property_id = $1 AND o.status = 'active'
-        ORDER BY o.current_amount DESC`,
+            FROM offers o
+            JOIN users u ON u.user_id = o.bidder_id
+            WHERE o.property_id = $1 AND o.status IN ('active', 'accepted')
+            ORDER BY o.status = 'accepted' DESC, o.current_amount DESC`,
             [propertyId]
         );
         const offers = offersResult.rows;
@@ -217,6 +217,15 @@ export default async function PropertyPage(props: PropertyPageProps) {
                             );
                         }
 
+                        let acceptedChip = null;
+                        if (offer.status === "accepted") {
+                            acceptedChip = (
+                                <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[10px] uppercase tracking-wide text-verified">
+                                    accepted
+                                </span>
+                            );
+                        }
+
                         let withdrawControl = null;
                         if (offer.bidder_id === userId && (property.state === "open" || property.state === "closed")) {
                             withdrawControl = <WithdrawBidButton propertyId={property.property_id} offerId={offer.offer_id} />;
@@ -229,6 +238,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                                     {withdrawControl}
                                 </div>
                                 <div className="flex items-center gap-3">
+                                    {acceptedChip}
                                     <p className="text-lg font-semibold text-brand">
                                         {formatPrice(offer.current_amount)}
                                     </p>
