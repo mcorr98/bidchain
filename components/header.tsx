@@ -46,7 +46,7 @@ export default async function Header() {
                             {session.user.role}
                         </span>
                     </div>
-                    {session.user.role === "bidder" && (
+                    {showBidderNav && (
                         <Link href="/verification" className="block px-4 py-2 text-sm text-gray-700 hover:bg-slate-50">
                             Manage ID document
                         </Link>
@@ -84,20 +84,15 @@ export default async function Header() {
         </nav>;
     } else if (session) {
         propertiesLink = <nav className="flex items-center gap-6">
-            {showBidderNav && (
+            {(showBidderNav || showVendorNav) && (
                 <Link href="/properties" className="px-1 py-1.5 text-sm text-gray-700 hover:text-gray-900">
-                    My bids
-                </Link>
-            )}
-            {showVendorNav && (
-                <Link href="/vendor/properties" className="px-1 py-1.5 text-sm text-gray-700 hover:text-gray-900">
                     My properties
                 </Link>
             )}
             {accountArea}
         </nav>;
     }
-    
+
     return (
         <header className="border-b border-gray-200 bg-white">
             <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">

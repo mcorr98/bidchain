@@ -154,7 +154,7 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
                 ON CONFLICT (user_id) DO NOTHING`,
                 [userId, invitation.created_by]
             );
-            redirectPath = "/vendor/properties";
+            redirectPath = "/properties";
 
 
             if (invitation.property_id !== null) {
