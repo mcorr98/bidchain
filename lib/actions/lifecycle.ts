@@ -176,7 +176,7 @@ export async function createListing(_previousState: unknown, formData: FormData)
         // An existing account without a vendor profile purposefully will leave
         // vendorId null. The DB transaction below creates a draft listing and invites
         // this email. After acceptance we attach the vendor profile to the account they already have.
-        
+
     }
 
     // Property details validation block 
@@ -446,7 +446,7 @@ export async function acceptBid(propertyId: number, offerId: number, _previousSt
 
         const offerCheck = await client.query<{ current_amount: number }>(
             `SELECT current_amount FROM offers
-             WHERE offer_id = $1 AND property_id = $2 AND status = $3`,
+            WHERE offer_id = $1 AND property_id = $2 AND status = $3`,
             [offerId, propertyId, "active"]
         );
 
@@ -459,7 +459,7 @@ export async function acceptBid(propertyId: number, offerId: number, _previousSt
 
         const tail = await client.query(
             `SELECT sequence, hash FROM events
-             WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
+            WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
             [propertyId]
         );
 
@@ -495,7 +495,7 @@ export async function acceptBid(propertyId: number, offerId: number, _previousSt
 
         await client.query(
             `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [propertyId, sequence, "BID_ACCEPTED", vendorId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
         );
 
@@ -506,13 +506,13 @@ export async function acceptBid(propertyId: number, offerId: number, _previousSt
 
         await client.query(
             `UPDATE offers SET status = $1, updated_at = NOW()
-             WHERE property_id = $2 AND status = $3 AND offer_id != $4`,
+            WHERE property_id = $2 AND status = $3 AND offer_id != $4`,
             ["expired", propertyId, "active", offerId]
         );
 
         await client.query(
             `UPDATE properties SET state = $1, updated_at = NOW()
-             WHERE property_id = $2`,
+            WHERE property_id = $2`,
             ["sale_agreed", propertyId]
         );
 
@@ -598,13 +598,13 @@ export async function completeSale(propertyId: number, _previousState: unknown, 
 
         await client.query(
             `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [propertyId, sequence, "SALE_COMPLETED", agentId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
         );
 
         await client.query(
             `UPDATE properties SET state = $1, status = $2, updated_at = NOW()
-             WHERE property_id = $3`,
+            WHERE property_id = $3`,
             ["completed", "sold", propertyId]
         );
 
@@ -637,13 +637,6 @@ export async function collapseSale(propertyId: number, _previousState: unknown, 
     const userId = Number(session.user.id);
 
     const reasonRaw = formData.get("reason");
-    let reason: string | null;
-
-    if (typeof reasonRaw === "string" && reasonRaw !== "") {
-        reason = reasonRaw;
-    } else {
-        reason = null;
-    }
 
     const client = await pool.connect();
 
@@ -682,6 +675,16 @@ export async function collapseSale(propertyId: number, _previousState: unknown, 
             await client.query("ROLLBACK");
             return { error: "Only the vendor or the accepted bidder can withdraw from this sale" };
         }
+
+        // Contextual withdraw reasons
+        const BUYER_REASONS = ["mortgage_declined", "survey", "chain_collapse", "other"];
+        const VENDOR_REASONS = ["chain_collapse", "no_longer_selling", "other"];
+        const allowedReasons = initiatedBy === "buyer" ? BUYER_REASONS : VENDOR_REASONS;
+        if (typeof reasonRaw !== "string" || !allowedReasons.includes(reasonRaw)) {
+            await client.query("ROLLBACK");
+            return { error: "Choose a reason for the collapse" };
+        }
+        const reason = reasonRaw;
 
         const tail = await client.query(
             `SELECT sequence, hash FROM events
@@ -840,7 +843,7 @@ export async function relistProperty(propertyId: number, _previousState: unknown
 
         await client.query(
             `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [propertyId, sequence, "PROPERTY_RELISTED", agentId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
         );
 
@@ -897,11 +900,11 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
     }
 
     const reasonRaw = formData.get("reason");
-    let reason: string | null;
-    if (typeof reasonRaw === "string" && reasonRaw !== "") {
+    let reason: string;
+    if (reasonRaw === "no_longer_selling" || reasonRaw === "selling_privately" || reasonRaw === "other") {
         reason = reasonRaw;
     } else {
-        reason = null;
+        return { error: "Choose a reason for withdrawing the listing" };
     }
 
     const client = await pool.connect();
@@ -923,7 +926,7 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
 
         const tail = await client.query(
             `SELECT sequence, hash FROM events
-                WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
+            WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
             [propertyId]
         );
 
@@ -957,14 +960,14 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
 
         await client.query(
             `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
             [propertyId, sequence, "LISTING_WITHDRAWN", agentId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
         );
 
         // Any live offers expire with the listing
         await client.query(
             `UPDATE offers SET status = $1, updated_at = NOW()
-                WHERE property_id = $2 AND status = $3`,
+            WHERE property_id = $2 AND status = $3`,
             ["expired", propertyId, "active"]
         );
 
@@ -972,7 +975,7 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
         leaves the market.*/
         await client.query(
             `UPDATE properties SET state = $1, status = $2, updated_at = NOW()
-                WHERE property_id = $3`,
+            WHERE property_id = $3`,
             ["withdrawn", "withdrawn", propertyId]
         );
 

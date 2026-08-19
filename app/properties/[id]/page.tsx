@@ -159,7 +159,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
         actionSection = <BidForm propertyId={property.property_id} />;
     } else if (isManaging && isDraft) {
         if (property.vendor_id === null) {
-            actionSection = <p className="text-sm text-gray-500">Waiting for the vendor to accept their invitation — publishing unlocks when they do.</p>;
+            actionSection = <p className="text-sm text-gray-500">Vendor must accept invitation before publishing</p>;
         } else {
             actionSection = <PublishListingButton propertyId={property.property_id} />;
         }
@@ -466,7 +466,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
     }
     let collapseControl = null;
     if (canCollapse) {
-        collapseControl = <CollapseSaleForm propertyId={property.property_id} />;
+        collapseControl = <CollapseSaleForm propertyId={property.property_id} initiator={isVendor ? "vendor" : "buyer"}/>;
     }
 
     // Re-lisiting 

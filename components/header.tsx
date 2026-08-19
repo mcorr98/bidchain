@@ -77,6 +77,9 @@ export default async function Header() {
             <Link href="/agent/listings" className="px-1 py-1.5 text-sm text-gray-700 hover:text-gray-900">
                 Dashboard
             </Link>
+            <Link href="/agent/reports" className="px-1 py-1.5 text-sm text-gray-700 hover:text-gray-900">
+                Reports
+            </Link>
             <Link href="/agent/verifications" className="px-1 py-1.5 text-sm text-gray-700 hover:text-gray-900">
                 Verifications
             </Link>

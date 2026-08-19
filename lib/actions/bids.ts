@@ -192,15 +192,6 @@ export async function withdrawBid(propertyId: number, offerId: number, _previous
         return { error: "Only verified bidders can withdraw an offer" };
     }
 
-
-    const reasonRaw = formData.get("reason");
-    let reason: string | null;
-    if (typeof reasonRaw === "string" && reasonRaw !== "") {
-        reason = reasonRaw;
-    } else {
-        reason = null;
-    }
-
     const client = await pool.connect();
 
     try {
@@ -247,7 +238,6 @@ export async function withdrawBid(propertyId: number, offerId: number, _previous
         const details = {
             offer_id: offerId,
             amount: offerCheck.rows[0].current_amount,
-            reason: reason,
         };
         const nonce = makeNonce();
         const preimage: EventPreimage = {

@@ -37,9 +37,13 @@ export default function WithdrawListingForm(props: WithdrawListingFormProps) {
             <form action={action} className="space-y-3">
                 {feedback}
                 <label className="block text-sm font-medium">
-                    Reason (optional)
-                    <textarea name="reason" rows={2} placeholder="e.g. Vendor no longer selling"
-                        className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2" />
+                    Reason
+                    <select name="reason" required defaultValue="" className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2">
+                        <option value="" disabled>Choose...</option>
+                        <option value="no_longer_selling">Vendor no longer selling</option>
+                        <option value="selling_privately">Sale being handled elsewhere</option>
+                        <option value="other">Other</option>
+                    </select>
                 </label>
                 <button type="submit" disabled={pending}
                     className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
