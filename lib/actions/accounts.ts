@@ -2,8 +2,9 @@
 import bcrypt from "bcrypt";
 import pool from "@/lib/db";
 import { redirect } from "next/navigation";
-import { hashToken } from "@/lib/invitations"; 
+import { hashToken } from "@/lib/invitations";
 import { standardiseEmail } from "@/lib/format";
+import { auth, signOut } from "@/auth";
 
 
 type RegistrationInviteRow = {
@@ -94,4 +95,89 @@ export async function registerAccount(_previousState: unknown, formData: FormDat
         loginUrl = `/login?next=${encodeURIComponent(nextPath)}`;
     }
     redirect(loginUrl);
+}
+
+export async function changePassword(_previousState: unknown, formData: FormData) {
+
+    const session = await auth();
+    if (!session) {
+        redirect("/login");
+    }
+    const userId = Number(session.user.id);
+
+    const currentPassword = formData.get("current_password");
+    const newPassword = formData.get("new_password");
+    const confirmPassword = formData.get("confirm_password");
+
+    if (typeof currentPassword !== "string" || currentPassword === "") {
+        return { error: "Enter your current password" };
+    }
+    if (typeof newPassword !== "string" || newPassword.length < 8) {
+        return { error: "New password must be at least 8 characters" };
+    }
+    if (confirmPassword !== newPassword) {
+        return { error: "New passwords don't match" };
+    }
+
+    const userResult = await pool.query<{ password_hash: string }>(
+        `SELECT password_hash FROM users WHERE user_id = $1`,
+        [userId]
+    );
+    const valid = await bcrypt.compare(currentPassword, userResult.rows[0].password_hash);
+    if (!valid) {
+        return { error: "Current password is incorrect" };
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await pool.query(
+        `UPDATE users SET password_hash = $1 WHERE user_id = $2`,
+        [newHash, userId]
+    );
+
+    return { success: true };
+}
+
+export async function changeEmail(_previousState: unknown, formData: FormData) {
+
+    const session = await auth();
+    if (!session) {
+        redirect("/login");
+    }
+    const userId = Number(session.user.id);
+
+    const newEmailRaw = formData.get("new_email");
+    const currentPassword = formData.get("current_password");
+
+    if (typeof newEmailRaw !== "string" || newEmailRaw.trim() === "" || !newEmailRaw.includes("@")) {
+        return { error: "Enter a valid email address" };
+    }
+    const newEmail = standardiseEmail(newEmailRaw);
+
+    if (typeof currentPassword !== "string" || currentPassword === "") {
+        return { error: "Enter your current password to confirm the change" };
+    }
+
+    const userResult = await pool.query<{ password_hash: string }>(
+        `SELECT password_hash FROM users WHERE user_id = $1`,
+        [userId]
+    );
+    const valid = await bcrypt.compare(currentPassword, userResult.rows[0].password_hash);
+    if (!valid) {
+        return { error: "Password is incorrect" };
+    }
+
+    try {
+        await pool.query(
+            `UPDATE users SET email = $1 WHERE user_id = $2`,
+            [newEmail, userId]
+        );
+    } catch (error: unknown) {
+        if (error && typeof error === "object" && "code" in error && error.code === "23505") {
+            return { error: "An account with that email email address already exists" };
+        }
+        console.error("changeEmail failed:", error);
+        return { error: "Something went wrong with updating your email address" };
+    }
+
+    await signOut({ redirectTo: "/login" });
 }

@@ -46,6 +46,9 @@ export default async function Header() {
                             {session.user.role}
                         </span>
                     </div>
+                    <Link href="/account" className="block px-4 py-2 text-sm text-gray-700 hover:bg-slate-50">
+                        Account settings
+                    </Link>
                     {showBidderNav && (
                         <Link href="/verification" className="block px-4 py-2 text-sm text-gray-700 hover:bg-slate-50">
                             Manage ID document

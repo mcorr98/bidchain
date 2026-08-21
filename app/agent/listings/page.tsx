@@ -231,13 +231,13 @@ export default async function AgentListingsPage() {
                                             <div className="min-w-0">
                                                 <p className="truncate text-sm font-medium text-ink">{lead.email}</p>
                                                 <p className="truncate text-xs text-gray-500">
-                                                    {lead.purpose === "vendor_activation" ? "Vendor — " : "Bidder — "}
+                                                    {lead.purpose === "vendor_activation" ? "Vendor - " : "Bidder - "}
                                                     {lead.address_line_1}
                                                 </p>
                                             </div>
                                             {expired ? (
                                                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-800">
-                                                    expired — re-invite
+                                                    expired - re-invite
                                                 </span>
                                             ) : (
                                                 <span className="text-xs text-gray-400">{daysWaiting}d waiting</span>
