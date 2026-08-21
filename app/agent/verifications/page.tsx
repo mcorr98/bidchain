@@ -76,8 +76,7 @@ export default async function AgentVerificationsPage() {
                                 sha256: {bidder.id_document_hash.slice(0, 16)}...
                             </span>
                         </p>
-                        <VerificationDecisionForm bidderId={bidder.user_id} />
-                    </li>
+                        <VerificationDecisionForm bidderId={bidder.user_id} documentHash={bidder.id_document_hash} />                    </li>
                 ))}
             </ul>
         </main>

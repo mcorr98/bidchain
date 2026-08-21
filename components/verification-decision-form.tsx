@@ -4,6 +4,7 @@ import { decideVerification } from "@/lib/actions/verification";
 
 type DecisionFormProps = {
     bidderId: number;
+    documentHash: string;
 };
 
 export default function VerificationDecisionForm(props: DecisionFormProps) {
@@ -28,6 +29,7 @@ export default function VerificationDecisionForm(props: DecisionFormProps) {
     return (
         <form action={action} className="space-y-2">
             {feedback}
+            <input type="hidden" name="reviewed_hash" value={props.documentHash} />
             <label className="block text-xs font-medium text-gray-500" htmlFor={`reason-${props.bidderId}`}>
                 Reason (required if rejecting)
             </label>

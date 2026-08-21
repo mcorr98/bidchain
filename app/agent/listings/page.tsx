@@ -34,6 +34,14 @@ type ActivityRow = {
     offer_status: string | null;
 };
 
+type LeadRow = {
+    email: string;
+    purpose: string;
+    created_at: Date;
+    expires_at: Date;
+    address_line_1: string;
+};
+
 /**
  * "Listings" dashboard which can be viewed by a logged in agent, highlighting key information the agent might need
  * @returns - listings page content HTML
@@ -105,6 +113,19 @@ export default async function AgentListingsPage() {
     );
     const activity = activityResult.rows;
 
+    // Outstanding invitations this agent has sent that were never
+    // accepted i.e potential leads 
+    const leadsResult = await pool.query<LeadRow>(
+        `SELECT DISTINCT ON (i.email, i.property_id)
+        i.email, i.purpose, i.created_at, i.expires_at, p.address_line_1
+        FROM invitations i
+        JOIN properties p ON p.property_id = i.property_id
+        WHERE i.created_by = $1 AND i.accepted_at IS NULL
+        ORDER BY i.email, i.property_id, i.created_at DESC`,
+        [agentId]
+    );
+    const leads = [...leadsResult.rows].sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
+
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
             <div className="mb-6 flex items-center justify-between">
@@ -128,12 +149,7 @@ export default async function AgentListingsPage() {
                         {listings.map((listing) => {
                             let topOfferLine;
                             if (listing.top_offer === null) {
-                                topOfferLine = <span className="text-gray-400">
-                                    No offers
-                                    <div className="flex items-center gap-3">
-                                        <p className="text-sm">{topOfferLine}</p>
-                                    </div>
-                                </span>;
+                                topOfferLine = <span className="text-gray-400">No offers</span>;
                             } else {
                                 topOfferLine = (
                                     <span className="font-semibold text-brand">
@@ -202,6 +218,35 @@ export default async function AgentListingsPage() {
                                 );
                             })}
                         </ul>
+                        <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-gray-500">Leads to chase</h2>
+                        {leads.length === 0 ? (
+                            <p className="text-sm text-gray-500">No outstanding invitations.</p>
+                        ) : (
+                            <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
+                                {leads.map((lead) => {
+                                    const daysWaiting = Math.floor((Date.now() - lead.created_at.getTime()) / 86400000);
+                                    const expired = lead.expires_at.getTime() < Date.now();
+                                    return (
+                                        <li key={lead.email + lead.address_line_1} className="grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3">
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-medium text-ink">{lead.email}</p>
+                                                <p className="truncate text-xs text-gray-500">
+                                                    {lead.purpose === "vendor_activation" ? "Vendor — " : "Bidder — "}
+                                                    {lead.address_line_1}
+                                                </p>
+                                            </div>
+                                            {expired ? (
+                                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-800">
+                                                    expired — re-invite
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs text-gray-400">{daysWaiting}d waiting</span>
+                                            )}
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        )}
                     </div>
                 </div>
             </div>

@@ -82,8 +82,6 @@ export async function submitVerification(prevState: VerificationFormState, formD
     client.release();
   }
 
-  // The superseded document is no longer referenced; its hash survives in any
-  // attestation that was made against it.
   if (previousName !== null && previousName !== storedName) {
     try {
       await unlink(path.join(uploadDir, previousName));
@@ -163,6 +161,12 @@ export async function decideVerification(bidderId: number, _previousState: unkno
     if (profileResult.rows.length === 0 || profileResult.rows[0].id_document_hash === null) {
       await client.query("ROLLBACK");
       return { error: "That bidder has no submitted document to review" };
+    }
+
+    const reviewedHash = formData.get("reviewed_hash");
+    if (reviewedHash !== profileResult.rows[0].id_document_hash) {
+      await client.query("ROLLBACK");
+      return { error: "A new document was uploaded while you were reviewing this one. Refresh the page to review the new document." };
     }
 
     await client.query(

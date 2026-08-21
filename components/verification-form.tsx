@@ -44,7 +44,7 @@ export default function VerificationForm() {
                 type="file"
                 accept=".jpg,.jpeg,.png,.pdf"
                 required
-                className="block w-full text-sm"
+                className="block w-full cursor-pointer text-sm text-gray-500 file:mr-3 file:cursor-pointer file:rounded file:border file:border-slate-300 file:border-solid file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-ink hover:file:bg-slate-50"
             />
 
             <button
