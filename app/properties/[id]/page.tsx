@@ -137,6 +137,43 @@ export default async function PropertyPage(props: PropertyPageProps) {
         agentContact = agentContactResult.rows[0] ?? null;
     }
 
+    // Bidder anonymous aliaseseir
+    const bidderAliases = new Map<number, string>();
+    if (!isManaging && session !== null) {
+        const aliasResult = await pool.query<{ actor_id: number }>(
+            `SELECT e.actor_id FROM events e
+            WHERE e.property_id = $1
+            AND e.event_type IN ('BID_PLACED', 'BID_REVISED', 'BID_WITHDRAWN', 'BID_RECONFIRMED')
+            ORDER BY e.sequence ASC`,
+            [propertyId]
+        );
+        for (const row of aliasResult.rows) {
+            if (!bidderAliases.has(row.actor_id)) {
+                bidderAliases.set(row.actor_id, "Bidder " + String.fromCharCode(65 + bidderAliases.size));
+            }
+        }
+    }
+
+    function participantLabel(actorId: number, actorName: string): string {
+        if (isManaging) {
+            return actorName;
+        }
+        if (actorId === property.agent_id) {
+            return actorName;
+        }
+        if (property.vendor_id !== null && actorId === property.vendor_id) {
+            if (isVendor) {
+                return actorName + " (you)";
+            }
+            return "Vendor";
+        }
+        const alias = bidderAliases.get(actorId) ?? "Bidder";
+        if (actorId === userId) {
+            return alias + " (you)";
+        }
+        return alias;
+    }
+
     // Property image 
     let imageArea;
     if (property.image_path === null) {
@@ -233,7 +270,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                         return (
                             <li key={offer.offer_id} className="flex items-start justify-between py-3">
                                 <div>
-                                    <p className="font-medium text-ink">{offer.name}</p>
+                                    <p className="font-medium text-ink">{participantLabel(offer.bidder_id, offer.name)}</p>
                                     {conditionsLine}
                                     {withdrawControl}
                                 </div>
@@ -308,7 +345,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                         <span className="ml-2 font-normal text-gray-500">#{event.sequence}</span>
                     </p>
                     <p className="text-sm text-gray-500">
-                        {event.actor_name} · {event.timestamp.toLocaleDateString("en-GB")}
+                        {participantLabel(event.actor_id, event.actor_name)} · {event.timestamp.toLocaleDateString("en-GB")}
                     </p>
                     {amountLine}
                 </li>
@@ -466,7 +503,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
     }
     let collapseControl = null;
     if (canCollapse) {
-        collapseControl = <CollapseSaleForm propertyId={property.property_id} initiator={isVendor ? "vendor" : "buyer"}/>;
+        collapseControl = <CollapseSaleForm propertyId={property.property_id} initiator={isVendor ? "vendor" : "buyer"} />;
     }
 
     // Re-lisiting 
