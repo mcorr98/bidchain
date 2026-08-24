@@ -19,6 +19,8 @@ import SectionHeading from "@/components/section-heading";
 import { HandCoins, Users, Link2, ChevronDown, Globe } from "lucide-react";
 import PublishListingButton from "@/components/publish-listing-button";
 import CancelInvitationButton from "@/components/cancel-invitation-button";
+import Link from "next/link";
+import { makeParticipantLabel, buildBidderAliases } from "@/lib/bid_visibility_manager";
 
 type PropertyRouteParams = {
     id: string;
@@ -140,8 +142,8 @@ export default async function PropertyPage(props: PropertyPageProps) {
         agentContact = agentContactResult.rows[0] ?? null;
     }
 
-    // Bidder anonymous alias
-    const bidderAliases = new Map<number, string>();
+    // Anonymisation / chain-derived aliases
+    let aliasActorIds: number[] = [];
     if (!isManaging && session !== null) {
         const aliasResult = await pool.query<{ actor_id: number }>(
             `SELECT e.actor_id FROM events e
@@ -150,32 +152,17 @@ export default async function PropertyPage(props: PropertyPageProps) {
             ORDER BY e.sequence ASC`,
             [propertyId]
         );
-        for (const row of aliasResult.rows) {
-            if (!bidderAliases.has(row.actor_id)) {
-                bidderAliases.set(row.actor_id, "Bidder " + String.fromCharCode(65 + bidderAliases.size));
-            }
-        }
+        aliasActorIds = aliasResult.rows.map((row) => row.actor_id);
     }
 
-    function participantLabel(actorId: number, actorName: string): string {
-        if (isManaging) {
-            return actorName;
-        }
-        if (actorId === property.agent_id) {
-            return actorName;
-        }
-        if (property.vendor_id !== null && actorId === property.vendor_id) {
-            if (isVendor) {
-                return actorName + " (you)";
-            }
-            return "Vendor";
-        }
-        const alias = bidderAliases.get(actorId) ?? "Bidder";
-        if (actorId === userId) {
-            return alias + " (you)";
-        }
-        return alias;
-    }
+    const participantLabel = makeParticipantLabel({
+        isManaging,
+        isVendorViewer: isVendor,
+        viewerId: userId,
+        agentId: property.agent_id,
+        vendorId: property.vendor_id,
+        aliases: buildBidderAliases(aliasActorIds),
+    });
 
     // Property image 
     let imageArea;
@@ -417,8 +404,9 @@ export default async function PropertyPage(props: PropertyPageProps) {
                         </ol>
                     </details>
                 )}
-                <div className="border-t border-slate-200 pt-3">
+                <div className="flex items-center gap-4 border-t border-slate-200 pt-3">
                     <a href={`/api/properties/${property.property_id}/receipt`} className="text-xs text-action underline">Download chain receipt</a>
+                    <Link href={`/properties/${property.property_id}/chain`} className="text-xs text-action underline">View full record</Link>
                 </div>
             </div>
         );
@@ -441,9 +429,9 @@ export default async function PropertyPage(props: PropertyPageProps) {
             `SELECT DISTINCT i.email
             FROM invitations i
             WHERE i.property_id = $1 AND i.purpose = 'bidder_invite' AND i.accepted_at IS NULL AND i.expires_at > NOW() AND NOT EXISTS (
-                SELECT 1 FROM property_participants pp
-                JOIN users u ON u.user_id = pp.user_id
-                WHERE pp.property_id = $1 AND u.email = i.email
+            SELECT 1 FROM property_participants pp
+            JOIN users u ON u.user_id = pp.user_id
+            WHERE pp.property_id = $1 AND u.email = i.email
             )`,
             [propertyId]
         );
@@ -655,7 +643,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
                                 {actionSection}
                             </div>
                         )}
-                        
+
                     </div>
                 </div>
             </div>
