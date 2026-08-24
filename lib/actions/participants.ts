@@ -184,4 +184,53 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
     redirect(redirectPath);
 } 
 
+/**
+ * Cancels a pending invitation
+ */
+export async function cancelInvitation(propertyId: number, email: string, _previousState: unknown, formData: FormData) {
 
+    const session = await auth();
+    if (!session) {
+        redirect("/login");
+    }
+    if (session.user.role !== "agent") {
+        return { error: "Only agents can cancel invitations" };
+    }
+    const agentId = Number(session.user.id);
+
+    if (!(await canManageProperty(propertyId, agentId))) {
+        return { error: "Property not under the administration of this agent" };
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        await client.query(
+            `DELETE FROM invitations
+            WHERE property_id = $1 AND email = $2
+            AND purpose = 'bidder_invite' AND accepted_at IS NULL`,
+            [propertyId, email]
+        );
+
+        await client.query(
+            `DELETE FROM property_participants pp
+            USING users u
+            WHERE pp.user_id = u.user_id
+            AND pp.property_id = $1 AND u.email = $2
+            AND pp.status IN ('invited', 'lapsed')`,
+            [propertyId, email]
+        );
+
+        await client.query("COMMIT");
+    } catch (err) {
+        console.error("cancelInvitation transaction failed:", err);
+        await client.query("ROLLBACK");
+        return { error: "Something went wrong cancelling the invitation" };
+    } finally {
+        client.release();
+    }
+
+    revalidatePath(`/properties/${propertyId}`);
+    return { success: true };
+}

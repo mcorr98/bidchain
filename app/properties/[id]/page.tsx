@@ -1,7 +1,7 @@
 import pool from "@/lib/db";
 import { Property } from "@/lib/types";
 import { notFound } from "next/navigation";
-import { listingTypeLabel, formatPrice, featuresLine, eventTypeLabel } from "@/lib/format";
+import { listingTypeLabel, formatPrice, featuresLine, eventTypeLabel, buyerPositionLabel, fundingLabel } from "@/lib/format";
 import BidForm from "@/components/bid-form";
 import { auth } from "@/auth";
 import { canBidOn, canManageProperty, canViewOffers, isPropertyVendor } from "@/lib/permissions";
@@ -18,6 +18,7 @@ import ReinviteButton from "@/components/reinvite-button";
 import SectionHeading from "@/components/section-heading";
 import { HandCoins, Users, Link2, ChevronDown, Globe } from "lucide-react";
 import PublishListingButton from "@/components/publish-listing-button";
+import CancelInvitationButton from "@/components/cancel-invitation-button";
 
 type PropertyRouteParams = {
     id: string;
@@ -31,6 +32,8 @@ type OfferRow = {
     offer_id: number,
     current_amount: number,
     conditions: string | null,
+    buyer_position: string | null,
+    funding: string | null,
     status: string,
     created_at: Date,
     name: string
@@ -137,7 +140,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
         agentContact = agentContactResult.rows[0] ?? null;
     }
 
-    // Bidder anonymous aliaseseir
+    // Bidder anonymous alias
     const bidderAliases = new Map<number, string>();
     if (!isManaging && session !== null) {
         const aliasResult = await pool.query<{ actor_id: number }>(
@@ -190,10 +193,47 @@ export default async function PropertyPage(props: PropertyPageProps) {
         );
     }
 
-    //Action panel - bid / invite bidders. Likely to change when I refactor agent views 
+    // Bid form defaults 
+    // Order of preference: first bid on this property -> profile defaults -> blank
+    let bidderPosition: string | null = null;
+    let defaultFunding: string | null = null;
+    let defaultFlags: string[] = [];
+    let defaultNote: string | null = null;
+    if (session !== null) {
+        const positionResult = await pool.query<{ buyer_position: string | null }>(
+            `SELECT buyer_position FROM bidder_profiles WHERE user_id = $1`,
+            [userId]
+        );
+        bidderPosition = positionResult.rows[0]?.buyer_position ?? null;
+
+        const previousBidResult = await pool.query<{ details: { buyer_position?: string; funding?: string; condition_flags?: string[]; note?: string | null } }>(
+            `SELECT e.details FROM events e
+            WHERE e.property_id = $1 AND e.actor_id = $2
+            AND e.event_type IN ('BID_PLACED', 'BID_REVISED')
+            ORDER BY e.sequence DESC LIMIT 1`,
+            [propertyId, userId]
+        );
+        if (previousBidResult.rows.length > 0) {
+            const previousConditions = previousBidResult.rows[0].details;
+            if (typeof previousConditions.buyer_position === "string") {
+                bidderPosition = previousConditions.buyer_position;
+            }
+            if (typeof previousConditions.funding === "string") {
+                defaultFunding = previousConditions.funding;
+            }
+            if (Array.isArray(previousConditions.condition_flags)) {
+                defaultFlags = previousConditions.condition_flags;
+            }
+            if (typeof previousConditions.note === "string") {
+                defaultNote = previousConditions.note;
+            }
+        }
+    }
+
+    //Action panel - bid / invite bidders
     let actionSection;
     if (canBid && property.state === "open") {
-        actionSection = <BidForm propertyId={property.property_id} />;
+        actionSection = <BidForm propertyId={property.property_id} defaultPosition={bidderPosition} defaultFunding={defaultFunding} defaultFlags={defaultFlags} defaultNote={defaultNote} />;
     } else if (isManaging && isDraft) {
         if (property.vendor_id === null) {
             actionSection = <p className="text-sm text-gray-500">Vendor must accept invitation before publishing</p>;
@@ -224,7 +264,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
     if (canSeeChain && !isDraft) {
         let offersContent;
         const offersResult = await pool.query<OfferRow>(
-            `SELECT o.offer_id, o.current_amount, o.conditions, o.status, o.created_at, o.bidder_id, u.name
+            `SELECT o.offer_id, o.current_amount, o.conditions, o.buyer_position, o.funding, o.status, o.created_at, o.bidder_id, u.name
             FROM offers o
             JOIN users u ON u.user_id = o.bidder_id
             WHERE o.property_id = $1 AND o.status IN ('active', 'accepted')
@@ -241,9 +281,9 @@ export default async function PropertyPage(props: PropertyPageProps) {
                 <ul className="divide-y divide-slate-200">
                     {offers.map((offer) => {
                         let conditionsLine = null;
-                        if (offer.conditions !== null) {
+                        if (offer.conditions !== null && (isManaging || isVendor)) {
                             conditionsLine = (
-                                <p className="text-sm text-gray-500">{offer.conditions}</p>
+                                <p className="text-xs text-gray-500">{offer.conditions}</p>
                             );
                         }
 
@@ -271,6 +311,11 @@ export default async function PropertyPage(props: PropertyPageProps) {
                             <li key={offer.offer_id} className="flex items-start justify-between py-3">
                                 <div>
                                     <p className="font-medium text-ink">{participantLabel(offer.bidder_id, offer.name)}</p>
+                                    {(offer.buyer_position !== null || offer.funding !== null) && (
+                                        <p className="text-xs text-gray-500">
+                                            {[fundingLabel(offer.funding), buyerPositionLabel(offer.buyer_position)].filter((part) => part !== "").join(" · ")}
+                                        </p>
+                                    )}
                                     {conditionsLine}
                                     {withdrawControl}
                                 </div>
@@ -301,10 +346,10 @@ export default async function PropertyPage(props: PropertyPageProps) {
         let badge;
         const eventsResult = await pool.query<EventRow & { actor_name: string }>(
             `SELECT e.property_id, e.sequence, e.event_type, e.actor_id, e.timestamp, e.details, e.canonical_details, e.nonce, e.hash, e.prev_hash, u.name AS actor_name 
-        FROM events e 
-        JOIN users u ON u.user_id = e.actor_id
-        WHERE e.property_id = $1
-        ORDER BY e.sequence ASC`,
+            FROM events e 
+            JOIN users u ON u.user_id = e.actor_id
+            WHERE e.property_id = $1
+            ORDER BY e.sequence ASC`,
             [propertyId]
         );
 
@@ -354,7 +399,7 @@ export default async function PropertyPage(props: PropertyPageProps) {
 
         chainSection = (
             <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
                     <SectionHeading icon={Link2} label="History" />
                     {badge}
                 </div>
@@ -404,7 +449,6 @@ export default async function PropertyPage(props: PropertyPageProps) {
         );
         pendingInvites = pendingInvitesResult.rows;
     }
-
     // Participant section (agent view only)
     let participantSection = null;
     if (isManaging && !isDraft) {
@@ -423,6 +467,16 @@ export default async function PropertyPage(props: PropertyPageProps) {
                                 <ReinviteButton propertyId={property.property_id} email={participant.email} />
                             );
                         }
+                        let cancelControl = null;
+                        if (participant.status === "invited") {
+                            cancelControl = (
+                                <CancelInvitationButton propertyId={property.property_id} email={participant.email} label="Cancel" />
+                            );
+                        } else if (participant.status === "lapsed") {
+                            cancelControl = (
+                                <CancelInvitationButton propertyId={property.property_id} email={participant.email} label="Remove" />
+                            );
+                        }
                         return (
                             <li key={participant.participant_id} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 py-2">
                                 <div className="min-w-0">
@@ -432,7 +486,10 @@ export default async function PropertyPage(props: PropertyPageProps) {
                                 <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-600">
                                     {participant.status}
                                 </span>
-                                {reinviteControl}
+                                <div className="flex items-center gap-3">
+                                    {reinviteControl}
+                                    {cancelControl}
+                                </div>
                             </li>
                         );
                     })}
@@ -445,7 +502,10 @@ export default async function PropertyPage(props: PropertyPageProps) {
                             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-600">
                                 invited
                             </span>
-                            <ReinviteButton propertyId={property.property_id} email={invite.email} />
+                            <div className="flex items-center gap-3">
+                                <ReinviteButton propertyId={property.property_id} email={invite.email} />
+                                <CancelInvitationButton propertyId={property.property_id} email={invite.email} label="Cancel" />
+                            </div>
                         </li>
                     ))}
                 </ul>
@@ -566,18 +626,14 @@ export default async function PropertyPage(props: PropertyPageProps) {
                         )}
                     </div>
                     {offersSection}
+                    {chainSection}
                     {participantSection}
                     {manageSection}
                 </div>
-                <div className="space-y-6 lg:sticky lg:top-8 lg:self-start lg:max-h-[calc(100vh-4rem)] lg:overflow-y-auto">
+                <div className="space-y-6 lg:sticky lg:top-8 lg:self-start">
                     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                         <p className="text-sm text-gray-500">{listingTypeLabel(property.listing_type)}</p>
                         <p className="text-3xl font-semibold text-brand">{formatPrice(property.asking_price)}</p>
-                        {actionSection !== undefined && (
-                            <div className="mt-4 border-t border-slate-200 pt-4">
-                                {actionSection}
-                            </div>
-                        )}
                         {vendorContact !== null && (
                             <div className="mt-4 border-t border-slate-200 pt-4">
                                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Vendor</p>
@@ -594,8 +650,13 @@ export default async function PropertyPage(props: PropertyPageProps) {
                                 {agentContact.phone !== null && <p className="text-sm text-gray-500">{agentContact.phone}</p>}
                             </div>
                         )}
+                        {actionSection !== undefined && (
+                            <div className="mt-4 border-t border-slate-200 pt-4">
+                                {actionSection}
+                            </div>
+                        )}
+                        
                     </div>
-                    {chainSection}
                 </div>
             </div>
         </main>

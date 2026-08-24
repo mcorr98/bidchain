@@ -89,3 +89,18 @@ export function eventTypeLabel(eventType: EventType): string {
 export function standardiseEmail(raw: string): string {
     return raw.trim().toLowerCase();
 }
+
+export function buyerPositionLabel(position: string | null): string {
+    if (position === "ftb") return "First-time buyer";
+    if (position === "chain") return "In a chain";
+    if (position === "no_chain") return "Nothing to sell";
+    return "";
+}
+
+export function fundingLabel(funding: string | null): string {
+    if (funding === "cash") return "Cash";
+    if (funding === "mortgage") return "Mortgage";
+    if (funding === "co_ownership") return "Co-Ownership";
+
+    return "";
+}

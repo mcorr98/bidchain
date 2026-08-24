@@ -15,6 +15,7 @@ type AgentStats = {
 
 type AgentListingRow = {
     property_id: number;
+    vendor_id: number | null;
     address_line_1: string;
     city: string;
     state: BiddingState;
@@ -85,7 +86,7 @@ export default async function AgentListingsPage() {
 
 
     const listingResult = await pool.query<AgentListingRow>(
-        `SELECT p.property_id, p.address_line_1, p.city, p.state, p.asking_price,
+        `SELECT p.property_id, p.vendor_id, p.address_line_1, p.city, p.state, p.asking_price,
         MAX(o.current_amount) FILTER (WHERE o.status = 'active') AS top_offer,
         COUNT(o.offer_id) FILTER (WHERE o.status = 'active') AS offer_count,
         p.created_at
@@ -162,11 +163,39 @@ export default async function AgentListingsPage() {
 
                             }
 
-                            let rowStateBadge = null;
-                            if (listing.state !== "open") {
-                                rowStateBadge = (
+                            let rowBubbleTag = null;
+                            if (listing.state === "draft" && listing.vendor_id !== null) {
+                                rowBubbleTag = (
+                                    <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-verified">
+                                        Ready to publish
+                                    </span>
+                                );
+                            } else if (listing.state === "draft") {
+                                rowBubbleTag = (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                        Awaiting vendor
+                                    </span>
+                                );
+                            } else if (listing.state === "closed") {
+                                rowBubbleTag = (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                        Decision due
+                                    </span>
+                                );
+                            } else if (listing.state === "collapsed") {
+                                rowBubbleTag = (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                                        Relist
+                                    </span>
+                                );
+                            } else if (listing.state !== "open") {
+                                let stateLabel: string = listing.state;
+                                if (listing.state === "sale_agreed") {
+                                    stateLabel = "Sale agreed";
+                                }
+                                rowBubbleTag = (
                                     <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs uppercase tracking-wide text-gray-600">
-                                        {listing.state}
+                                        {stateLabel}
                                     </span>
                                 );
                             }
@@ -180,9 +209,9 @@ export default async function AgentListingsPage() {
                                                 <p className="text-sm font-medium text-ink">{listing.address_line_1}</p>
                                                 <p className="text-xs text-gray-500">{listing.city}</p>
                                             </div>
-                                            {rowStateBadge}
                                         </div>
                                         <div className="flex items-center gap-2">
+                                            {rowBubbleTag}
                                             <p className="text-sm">{topOfferLine}</p>
                                             <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
                                         </div>

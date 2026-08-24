@@ -63,13 +63,49 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
 
     const amountPence = pounds * 100;
 
-    const conditionsRaw = formData.get("conditions");
-
-    let conditions: string | null;
-    if (typeof conditionsRaw === "string" && conditionsRaw !== "") {
-        conditions = conditionsRaw;
+    const positionRaw = formData.get("buyer_position");
+    let buyerPosition: string;
+    if (positionRaw === "ftb" || positionRaw === "chain" || positionRaw === "no_chain") {
+        buyerPosition = positionRaw;
     } else {
-        conditions = null;
+        return { error: "Select your position" };
+    }
+
+    const fundingRaw = formData.get("funding");
+    let funding: string;
+    if (fundingRaw === "cash" || fundingRaw === "mortgage") {
+        funding = fundingRaw;
+    } else {
+        return { error: "Select how the purchase's funding method" };
+    }
+
+    const ALLOWED_FLAGS = ["subject_to_survey", "flexible_completion"];
+    const FLAG_LABELS: Record<string, string> = {
+        subject_to_survey: "Subject to survey",
+        flexible_completion: "Flexible on completion date",
+    };
+    const flagsRaw = formData.getAll("condition_flags");
+    const conditionFlags: string[] = [];
+    for (const flag of flagsRaw) {
+        if (typeof flag === "string" && ALLOWED_FLAGS.includes(flag) && !conditionFlags.includes(flag)) {
+            conditionFlags.push(flag);
+        }
+    }
+
+    const noteRaw = formData.get("note");
+    let note: string | null = null;
+    if (typeof noteRaw === "string" && noteRaw !== "") {
+        note = noteRaw;
+    }
+
+    // Summary as structured fields for the details field in the event
+    const summaryParts = conditionFlags.map((flag) => FLAG_LABELS[flag]);
+    if (note !== null) {
+        summaryParts.push(note);
+    }
+    let conditions: string | null = null;
+    if (summaryParts.length > 0) {
+        conditions = summaryParts.join("; ");
     }
 
     const client = await pool.connect();
@@ -91,24 +127,24 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
 
         if (existingOffer.rows.length === 0) {
             const insert = await client.query<{ offer_id: number }>(
-                `INSERT INTO offers (property_id, bidder_id, current_amount, conditions, status)
-                VALUES ($1, $2, $3, $4, 'active')
+                `INSERT INTO offers (property_id, bidder_id, current_amount, conditions, buyer_position, funding, status)
+                VALUES ($1, $2, $3, $4, $5, $6 'active')
                 RETURNING offer_id`,
-                [propertyId, bidderId, amountPence, conditions]
+                [propertyId, bidderId, amountPence, conditions, buyerPosition, funding]
             );
 
             offerId = insert.rows[0].offer_id;
             eventType = "BID_PLACED";
-            details = { offer_id: offerId, amount: amountPence, conditions };
+            details = { offer_id: offerId, amount: amountPence, conditions, condition_flags: conditionFlags, note: note, buyer_position: buyerPosition, funding: funding  };
 
         } else {
             const previous = existingOffer.rows[0];
             offerId = previous.offer_id;
 
             await client.query(
-                `UPDATE offers SET current_amount = $1, conditions = $2, updated_at = NOW()
-                WHERE offer_id = $3`,
-                [amountPence, conditions, offerId]
+                `UPDATE offers SET current_amount = $1, conditions = $2, buyer_position = $3, funding = $4, updated_at = NOW()
+                WHERE offer_id = $5`,
+                [amountPence, conditions, buyerPosition, funding, offerId]
             );
 
             eventType = "BID_REVISED";
@@ -117,6 +153,10 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
                 old_amount: previous.current_amount,
                 new_amount: amountPence,
                 conditions,
+                condition_flags: conditionFlags, 
+                note: note, 
+                buyer_position: buyerPosition, 
+                funding: funding 
             };
         }
 
@@ -138,7 +178,7 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
             sequence = tail.rows[0].sequence + 1;
             prevHash = tail.rows[0].hash;
         }
-        
+
         const timestamp = new Date().toISOString();
         const nonce = makeNonce();
         const preimage: EventPreimage = {
@@ -185,7 +225,7 @@ export async function withdrawBid(propertyId: number, offerId: number, _previous
         redirect("/login");
     }
 
-        const bidderId = Number(session.user.id);
+    const bidderId = Number(session.user.id);
 
 
     if (!(await hasBidderProfile(bidderId))) {
