@@ -21,7 +21,7 @@ export async function GET(
         return new Response("Unauthorised", { status: 401 });
     }
 
-    // The only filenames in this column are ones the server  generated during uploading, 
+    // The only filenames in this column are ones the server generated during uploading, 
     // so finding an exact match works as the filename validation. 
     // User input is used solely as a lookup key and never reaches the filesystem.
     const docResult = await pool.query(
@@ -47,7 +47,8 @@ export async function GET(
     return new Response(buffer, {
         headers: {
             "Content-Type": contentType,
-            "Content-Disposition": "inline",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'",
         },
     });
 }

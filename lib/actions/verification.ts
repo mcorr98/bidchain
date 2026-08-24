@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import pool from "@/lib/db";
 import { redirect } from "next/navigation";
-import { isActiveAgency, hasBidderProfile } from "@/lib/permissions";
+import { isActiveAgency, hasBidderProfile } from "@/lib/permissions"; 
+import { matchesMagicBytes } from "@/lib/uploads_validation";
 
 export type VerificationFormState = {
   status: "idle" | "error" | "success";
@@ -53,6 +54,11 @@ export async function submitVerification(prevState: VerificationFormState, formD
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+
+  if (!matchesMagicBytes(buffer, file.type)) {
+        return { status: "error", message: "File contents don't match its type." };
+    }
+
   const documentHash = createHash("sha256").update(buffer).digest("hex");
   const storedName = randomUUID() + extension;
   const uploadDir = path.join(process.cwd(), "private", "uploads", "identity");

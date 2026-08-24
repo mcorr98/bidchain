@@ -4,7 +4,8 @@ import pool from "@/lib/db";
 import { redirect } from "next/navigation";
 import { hashToken } from "@/lib/invitations";
 import { standardiseEmail } from "@/lib/format";
-import { auth, signOut } from "@/auth";
+import { auth, signOut } from "@/auth"; 
+import { rateLimit } from "@/lib/rate-limit";
 
 
 type RegistrationInviteRow = {
@@ -32,6 +33,10 @@ export async function registerAccount(_previousState: unknown, formData: FormDat
     }
 
     const email = standardiseEmail(emailRaw);
+
+    if (!rateLimit("register:" + email, 3, 60 * 60 * 1000)) {
+        return { error: "Too many attempts. Try again later" };
+    }
 
     if (typeof password !== "string" || password.length < 8) {
         return { error: "Password must be at least 8 characters" };

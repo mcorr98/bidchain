@@ -13,9 +13,18 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { sendVendorActivationEmail } from "@/lib/email";
 import { hashToken, invitationExpiry, makeInvitationToken, invitationLink } from "@/lib/invitations";
-import { standardiseEmail } from "@/lib/format";
+import { standardiseEmail } from "@/lib/format"; 
+import { matchesMagicBytes } from "@/lib/uploads_validation";
 
 type ParsedOptionalWholeNumber = number | null | "invalid";
+
+type PublishListingRow = {
+    state: BiddingState;
+    vendor_id: number | null;
+    asking_price: number;
+    listing_type: string;
+    listing_url: string | null;
+};
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES: Record<string, string> = {
@@ -212,6 +221,9 @@ export async function createListing(_previousState: unknown, formData: FormData)
             return { error: "Photo must be under 10MB", values: formValues(formData) };
         }
         imageBuffer = Buffer.from(await image.arrayBuffer());
+        if (!matchesMagicBytes(imageBuffer, image.type)) {
+            return { error: "File contents don't match its type", values: formValues(formData) };
+        }
         storedImageName = randomUUID() + imageExtension;
         imagePath = "/uploads/" + storedImageName;
     }
@@ -344,8 +356,8 @@ export async function publishListing(propertyId: number, _previousState: unknown
     try {
         await client.query("BEGIN");
 
-        const locked = await client.query<{ state: BiddingState; vendor_id: number | null; asking_price: number; listing_type: string }>(
-            `SELECT state, vendor_id, asking_price, listing_type FROM properties
+        const locked = await client.query<PublishListingRow>(
+            `SELECT state, vendor_id, asking_price, listing_type, listing_url FROM properties
             WHERE property_id = $1 FOR UPDATE`,
             [propertyId]
         );
@@ -363,6 +375,7 @@ export async function publishListing(propertyId: number, _previousState: unknown
         const details = {
             asking_price_snapshot: locked.rows[0].asking_price,
             listing_type_snapshot: locked.rows[0].listing_type,
+            listing_url_snapshot: locked.rows[0].listing_url,
         };
         const nonce = makeNonce();
         const preimage: EventPreimage = {
