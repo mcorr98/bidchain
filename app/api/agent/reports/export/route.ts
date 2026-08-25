@@ -27,7 +27,11 @@ export async function GET(request: Request) {
     lines.push("Bids per listing," + (metrics.averageBidsPerListing === null ? "" : metrics.averageBidsPerListing.toFixed(1)));
     lines.push("Sales agreed," + metrics.acceptances);
     lines.push("Sales collapsed," + metrics.collapses);
-    lines.push("Bids in period," + metrics.bidsWithinPeriod);
+    lines.push("Days to first bid," + (metrics.averageDaysToFirstBid === null ? "" : metrics.averageDaysToFirstBid.toFixed(1)));
+    lines.push("Days lost per collapse," + (metrics.averageDaysLostToCollapse === null ? "" : metrics.averageDaysLostToCollapse.toFixed(1)));
+    lines.push("Relist discount (%)," + (metrics.averageRelistDiscount === null ? "" : (metrics.averageRelistDiscount * 100).toFixed(1)));
+    lines.push("");
+    lines.push("Bidders at acceptance,Sales,Achieved vs asking (%)");
     lines.push("");
     lines.push("Collapse reason,Count");
     for (const row of metrics.collapseReasons) {

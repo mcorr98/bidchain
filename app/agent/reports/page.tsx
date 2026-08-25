@@ -23,6 +23,16 @@ function collapseReasonLabel(reason: string | null): string {
     return reason;
 }
 
+function premiumBucketLabel(bucket: string): string {
+    if (bucket === "1") {
+        return "1 bidder";
+    }
+    if (bucket === "2") {
+        return "2 bidders";
+    }
+    return "3+ bidders";
+}
+
 /**
  * Agency reports: performance over a select time period derived from
  * the event chain
@@ -64,6 +74,25 @@ export default async function AgentReportsPage(props: ReportsPageProps) {
         collapseLabel = Math.round((metrics.collapses / metrics.acceptances) * 100) + "%";
     }
 
+    let firstBidLabel: string;
+    if (metrics.averageDaysToFirstBid === null) {
+        firstBidLabel = "–";
+    } else {
+        firstBidLabel = metrics.averageDaysToFirstBid.toFixed(1) + " days";
+    }
+    let daysLostLabel: string;
+    if (metrics.averageDaysLostToCollapse === null) {
+        daysLostLabel = "–";
+    } else {
+        daysLostLabel = metrics.averageDaysLostToCollapse.toFixed(1) + " days";
+    }
+    let relistDiscountLabel: string;
+    if (metrics.averageRelistDiscount === null) {
+        relistDiscountLabel = "–";
+    } else {
+        relistDiscountLabel = (metrics.averageRelistDiscount * 100).toFixed(1) + "%";
+    }
+
     return (
         <main className="mx-auto max-w-6xl px-4 py-8">
             <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -89,12 +118,11 @@ export default async function AgentReportsPage(props: ReportsPageProps) {
             <div className="space-y-10">
                 <div className="space-y-3">
                     <SectionHeading icon={Timer} label="Performance" />
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <StatCard label="Avg Time To Sale Agreed" value={daysLabel} />
-                        <StatCard label="Achieved Vs Asking Price" value={ratioLabel} />
                         <StatCard label="Avg Bids Per Listing" value={bidsLabel} />
                         <StatCard label="Collapse Rate" value={collapseLabel} />
-                        <StatCard label="Total Bids Within Period" value={String(metrics.bidsWithinPeriod)} />
+                        <StatCard label="Avg Days To First Bid" value={firstBidLabel} />
                     </div>
                 </div>
 
@@ -116,14 +144,14 @@ export default async function AgentReportsPage(props: ReportsPageProps) {
                     </div>
 
                     <div className="space-y-3 lg:col-span-2">
-                        <SectionHeading icon={ChartNoAxesColumn} label="Bids per month" />
-                        {metrics.bidsByMonth.length === 0 ? (
-                            <p className="text-sm text-gray-500">No bids in this period.</p>
+                        <SectionHeading icon={ChartNoAxesColumn} label="New listings per month" />
+                        {metrics.listingsByMonth.length === 0 ? (
+                            <p className="text-sm text-gray-500">No new listings in this period.</p>
                         ) : (
                             <div className="rounded-xl border border-slate-200 bg-white p-6">
                                 <div className="flex h-48 items-end gap-3">
-                                    {metrics.bidsByMonth.map((bar) => {
-                                        const max = Math.max(...metrics.bidsByMonth.map((b) => b.count));
+                                    {metrics.listingsByMonth.map((bar) => {
+                                        const max = Math.max(...metrics.listingsByMonth.map((b) => b.count));
                                         const heightPercent = Math.max((bar.count / max) * 100, 4);
                                         return (
                                             <div key={bar.month.toISOString()} className="flex flex-1 flex-col items-center justify-end gap-1 self-stretch">
@@ -138,6 +166,17 @@ export default async function AgentReportsPage(props: ReportsPageProps) {
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+                    <div className="space-y-3">
+                        <SectionHeading icon={CircleAlert} label="Cost of a collapse" />
+                        <div className="grid grid-cols-2 gap-4">
+                            <StatCard label="Avg Days Lost" value={daysLostLabel} />
+                            <StatCard label="Avg Relist Discount" value={relistDiscountLabel} />
+                        </div>
+                        <p className="text-xs text-gray-500">Time from acceptance to collapse, and price given up on relisting.</p>
                     </div>
                 </div>
             </div>
