@@ -13,7 +13,7 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { sendVendorActivationEmail } from "@/lib/email";
 import { hashToken, invitationExpiry, makeInvitationToken, invitationLink } from "@/lib/invitations";
-import { standardiseEmail } from "@/lib/format"; 
+import { standardiseEmail } from "@/lib/format";
 import { matchesMagicBytes } from "@/lib/uploads_validation";
 
 type ParsedOptionalWholeNumber = number | null | "invalid";
@@ -1004,5 +1004,241 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
 
     revalidatePath("/agent/listings");
     revalidatePath(`/properties/${propertyId}`);
+    return { success: true };
+}
+
+/**
+ * Updates a draft listing's details. 
+ */
+export async function updateDraftListing(propertyId: number, _previousState: unknown, formData: FormData) {
+
+    const session = await auth();
+    if (!session) {
+        redirect("/login");
+    }
+    if (session.user.role !== "agent") {
+        return { error: "Only the agent can edit the listing daft", values: formValues(formData) };
+    }
+    const agentId = Number(session.user.id);
+
+    if (!(await isActiveAgency(agentId))) {
+        return { error: "Your agency account has not been activated", values: formValues(formData) };
+    }
+    if (!(await canManageProperty(propertyId, agentId))) {
+        return { error: "You don't manage this property", values: formValues(formData) };
+    }
+
+    // Address validation block
+    const addressLine1 = formData.get("address_line_1");
+    let addressLine2: string | null = null;
+    const addressLine2Raw = formData.get("address_line_2");
+    const city = formData.get("city");
+    const postcode = formData.get("postcode");
+    if (typeof addressLine1 !== "string" || addressLine1 === "") {
+        return { error: "Enter the first line of the address", values: formValues(formData) };
+    }
+    if (typeof addressLine2Raw === "string" && addressLine2Raw !== "") {
+        addressLine2 = addressLine2Raw;
+    }
+    if (typeof city !== "string" || city === "") {
+        return { error: "Enter the city", values: formValues(formData) };
+    }
+    if (typeof postcode !== "string" || postcode === "") {
+        return { error: "Enter the postcode", values: formValues(formData) };
+    }
+
+    // Price validation block
+    const pounds = Number(formData.get("asking_price"));
+    if (Number.isNaN(pounds)) {
+        return { error: "Enter a valid asking price", values: formValues(formData) };
+    }
+    if (pounds <= 0) {
+        return { error: "Enter a valid asking price", values: formValues(formData) };
+    }
+    if (!Number.isInteger(pounds)) {
+        return { error: "Asking price must be whole pounds", values: formValues(formData) };
+    }
+    const askingPricePence = pounds * 100;
+
+    // Listing type validation block
+    const listingTypeRaw = formData.get("listing_type");
+    let listingType: ListingType;
+    if (listingTypeRaw === "offers_over" || listingTypeRaw === "offers_around" || listingTypeRaw === "fixed_price") {
+        listingType = listingTypeRaw;
+    } else {
+        return { error: "Choose a listing type", values: formValues(formData) };
+    }
+
+    // Optional details validation block
+    const bedrooms = parseOptionalWholeNumber(formData.get("bedrooms"));
+    const bathrooms = parseOptionalWholeNumber(formData.get("bathrooms"));
+    const receptions = parseOptionalWholeNumber(formData.get("receptions"));
+
+    // Listing link validation block
+    let listingUrl: string | null = null;
+    const listingUrlRaw = formData.get("listing_url");
+    if (typeof listingUrlRaw === "string" && listingUrlRaw !== "") {
+        let parsedUrl: URL;
+        try {
+            parsedUrl = new URL(listingUrlRaw);
+        } catch {
+            return { error: "Listing link must be a full valid web address", values: formValues(formData) };
+        }
+        if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+            return { error: "Listing link must start with http or https", values: formValues(formData) };
+        }
+        listingUrl = listingUrlRaw;
+    }
+
+    // Replacement image validation block (an empty file input keeps the current image)
+    const image = formData.get("image");
+    let imageBuffer: Buffer | null = null;
+    let storedImageName: string | null = null;
+    let newImagePath: string | null = null;
+    if (image instanceof File && image.size > 0) {
+        const imageExtension = ALLOWED_IMAGE_TYPES[image.type];
+        if (!imageExtension) {
+            return { error: "Photo must be a JPEG, PNG, or WebP", values: formValues(formData) };
+        }
+        if (image.size > MAX_IMAGE_SIZE_BYTES) {
+            return { error: "Photo must be under 10MB", values: formValues(formData) };
+        }
+        imageBuffer = Buffer.from(await image.arrayBuffer());
+        if (!matchesMagicBytes(imageBuffer, image.type)) {
+            return { error: "File contents don't match its type", values: formValues(formData) };
+        }
+        storedImageName = randomUUID() + imageExtension;
+        newImagePath = "/uploads/" + storedImageName;
+    }
+
+    if (imageBuffer !== null && storedImageName !== null) {
+        const uploadDir = path.join(process.cwd(), "public", "uploads");
+        await mkdir(uploadDir, { recursive: true });
+        await writeFile(path.join(uploadDir, storedImageName), imageBuffer);
+    }
+
+    const updateResult = await pool.query(
+        `UPDATE properties
+        SET address_line_1 = $1, address_line_2 = $2, city = $3, postcode = $4,
+        asking_price = $5, listing_type = $6, bedrooms = $7, bathrooms = $8,
+        receptions = $9, listing_url = $10,
+        image_path = COALESCE($11, image_path)
+        WHERE property_id = $12 AND state = 'draft'`,
+        [addressLine1, addressLine2, city, postcode, askingPricePence, listingType, bedrooms, bathrooms, receptions, listingUrl, newImagePath, propertyId]
+    );
+    if (updateResult.rowCount === 0) {
+        return { error: "Only draft listings can be edited", values: formValues(formData) };
+    }
+
+    revalidatePath(`/agent/drafts/${propertyId}`);
+    revalidatePath("/agent/listings");
+    return { success: true };
+}
+
+/**
+ * Replaces / resends a vendor invitation during draft phase
+ */
+export async function replaceVendorInvitation(propertyId: number, _previousState: unknown, formData: FormData) {
+
+    const session = await auth();
+    if (!session) {
+        redirect("/login");
+    }
+    if (session.user.role !== "agent") {
+        return { error: "Only agents can manage vendor invitations" };
+    }
+    const agentId = Number(session.user.id);
+
+    if (!(await isActiveAgency(agentId))) {
+        return { error: "Your agency account has not been activated" };
+    }
+    if (!(await canManageProperty(propertyId, agentId))) {
+        return { error: "You don't manage this property" };
+    }
+
+    // Vendor email validation block 
+    const vendorEmailRaw = formData.get("vendor_email");
+    if (typeof vendorEmailRaw !== "string" || vendorEmailRaw === "") {
+        return { error: "Enter the vendor's email address" };
+    }
+    const vendorEmail = standardiseEmail(vendorEmailRaw);
+
+    const userResult = await pool.query<{ user_id: number; role: string }>(
+        `SELECT user_id, role FROM users WHERE email = $1`,
+        [vendorEmail]
+    );
+    let existingVendorId: number | null = null;
+    if (userResult.rowCount !== null && userResult.rowCount > 0) {
+        const existingUser = userResult.rows[0];
+        if (existingUser.role === "agent") {
+            return { error: "That email belongs to an agent account: agents cannot also be registered as vendors" };
+        }
+        if (await hasVendorProfile(existingUser.user_id)) {
+            existingVendorId = existingUser.user_id;
+        }
+    }
+
+    let inviteToken: string | null = null;
+    let addressForEmail: string = "";
+
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        const locked = await client.query<{ state: BiddingState; vendor_id: number | null; address_line_1: string; city: string }>(
+            `SELECT state, vendor_id, address_line_1, city FROM properties
+            WHERE property_id = $1 FOR UPDATE`,
+            [propertyId]
+        );
+        if (locked.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return { error: "Property not found" };
+        }
+        if (locked.rows[0].state !== "draft") {
+            await client.query("ROLLBACK");
+            return { error: "Vendor invitations can only be changed on a draft" };
+        }
+
+        addressForEmail = locked.rows[0].address_line_1 + ", " + locked.rows[0].city;
+
+        // Revoke the previous invitation
+        await client.query(
+            `DELETE FROM invitations
+            WHERE property_id = $1 AND purpose = 'vendor_activation' AND accepted_at IS NULL`,
+            [propertyId]
+        );
+
+        if (existingVendorId !== null) {
+            await client.query(
+                `UPDATE properties SET vendor_id = $1 WHERE property_id = $2`,
+                [existingVendorId, propertyId]
+            );
+        } else {
+            await client.query(
+                `UPDATE properties SET vendor_id = NULL WHERE property_id = $1`,
+                [propertyId]
+            );
+            inviteToken = makeInvitationToken();
+            await client.query(
+                `INSERT INTO invitations (token_hash, email, purpose, property_id, created_by, expires_at)
+                VALUES ($1, $2, 'vendor_activation', $3, $4, $5)`,
+                [hashToken(inviteToken), vendorEmail, propertyId, agentId, invitationExpiry()]
+            );
+        }
+
+        await client.query("COMMIT");
+    } catch (err) {
+        console.error("replaceVendorInvitation transaction failed:", err);
+        await client.query("ROLLBACK");
+        return { error: "Something went wrong changing the vendor invitation" };
+    } finally {
+        client.release();
+    }
+
+    if (inviteToken !== null) {
+        await sendVendorActivationEmail(vendorEmail, addressForEmail, invitationLink(inviteToken));
+    }
+
+    revalidatePath(`/agent/drafts/${propertyId}`);
     return { success: true };
 }

@@ -43,11 +43,28 @@ type LeadRow = {
     address_line_1: string;
 };
 
+type ListingsView = "active" | "drafts" | "archived";
+
+type ListingsSearchParams = {
+    view?: string;
+};
+
+type AgentListingsPageProps = {
+    searchParams: Promise<ListingsSearchParams>;
+};
+
+function viewTabClass(isSelected: boolean): string {
+    if (isSelected) {
+        return "rounded-md bg-white px-3 py-1.5 font-medium text-ink shadow-sm";
+    }
+    return "rounded-md px-3 py-1.5 text-gray-500 hover:text-ink";
+}
+
 /**
  * "Listings" dashboard which can be viewed by a logged in agent, highlighting key information the agent might need
  * @returns - listings page content HTML
  */
-export default async function AgentListingsPage() {
+export default async function AgentListingsPage(props: AgentListingsPageProps) {
 
     const session = await auth();
     if (!session || session.user.role !== "agent") {
@@ -55,6 +72,16 @@ export default async function AgentListingsPage() {
     }
 
     const agentId = Number(session.user.id);
+
+    const searchParams = await props.searchParams;
+    let view: ListingsView;
+    if (searchParams.view === "drafts") {
+        view = "drafts";
+    } else if (searchParams.view === "archived") {
+        view = "archived";
+    } else {
+        view = "active";
+    }
 
     const statsResult = await pool.query<AgentStats>(
         `SELECT 
@@ -98,6 +125,16 @@ export default async function AgentListingsPage() {
         [agentId]
     );
     const listings = listingResult.rows;
+
+    const ACTIVE_STATES: BiddingState[] = ["open", "closed", "sale_agreed", "collapsed"];
+    let visibleListings: AgentListingRow[];
+    if (view === "drafts") {
+        visibleListings = listings.filter((listing) => listing.state === "draft");
+    } else if (view === "archived") {
+        visibleListings = listings.filter((listing) => listing.state === "completed" || listing.state === "withdrawn");
+    } else {
+        visibleListings = listings.filter((listing) => ACTIVE_STATES.includes(listing.state));
+    }
 
     const activityResult = await pool.query<ActivityRow>(
         `SELECT e.event_id, e.timestamp, e.property_id, p.address_line_1, u.name AS actor_name,
@@ -146,8 +183,16 @@ export default async function AgentListingsPage() {
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-2">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Your listings</h2>
+                    <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-sm">
+                        <Link href="/agent/listings" className={viewTabClass(view === "active")}>Active</Link>
+                        <Link href="/agent/listings?view=drafts" className={viewTabClass(view === "drafts")}>Drafts</Link>
+                        <Link href="/agent/listings?view=archived" className={viewTabClass(view === "archived")}>Archived</Link>
+                    </div>
                     <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
-                        {listings.map((listing) => {
+                        {visibleListings.length === 0 && (
+                            <li className="px-4 py-6 text-sm text-gray-500">Nothing in this view</li>
+                        )}
+                        {visibleListings.map((listing) => {
                             let topOfferLine;
                             if (listing.top_offer === null) {
                                 topOfferLine = <span className="text-gray-400">No offers</span>;
@@ -161,6 +206,13 @@ export default async function AgentListingsPage() {
                                     </span>
                                 );
 
+                            }
+
+                            let rowHref: string;
+                            if (listing.state === "draft") {
+                                rowHref = `/agent/drafts/${listing.property_id}`;
+                            } else {
+                                rowHref = `/properties/${listing.property_id}`;
                             }
 
                             let rowBubbleTag = null;
@@ -202,7 +254,7 @@ export default async function AgentListingsPage() {
 
                             return (
                                 <li key={listing.property_id}>
-                                    <Link href={`/properties/${listing.property_id}`}
+                                    <Link href={rowHref}
                                         className="flex items-center justify-between px-4 py-3 hover:bg-slate-50">
                                         <div className="flex items-center gap-3">
                                             <div>
