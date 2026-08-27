@@ -4,8 +4,9 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { canBidOn, hasBidderProfile } from "@/lib/permissions";
-import { hashEvent, makeNonce, GENESIS_HASH, EventPreimage, EventType, JsonValue } from "@/lib/chain";
+import { EventType, JsonValue } from "@/lib/chain";
 import { BiddingState } from "@/lib/types";
+import { appendEvent } from "@/lib/events";
 
 /**
  * Places a bid on a property. Writes to the chain only after input passes through validation stack:
@@ -160,45 +161,13 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
             };
         }
 
-        const tail = await client.query(
-            `SELECT sequence, hash FROM events
-             WHERE property_id = $1
-             ORDER BY sequence DESC
-             LIMIT 1`,
-            [propertyId]
-        );
-
-        let sequence: number;
-        let prevHash: string;
-
-        if (tail.rows.length === 0) {
-            sequence = 1;
-            prevHash = GENESIS_HASH;
-        } else {
-            sequence = tail.rows[0].sequence + 1;
-            prevHash = tail.rows[0].hash;
-        }
-
-        const timestamp = new Date().toISOString();
-        const nonce = makeNonce();
-        const preimage: EventPreimage = {
-            property_id: propertyId,
-            sequence,
-            event_type: eventType,
-            actor_id: bidderId,
-            timestamp,
-            details,
-            nonce,
-            prev_hash: prevHash,
-        };
-
-        const { hash, canonicalDetails } = hashEvent(preimage);
-
-        await client.query(
-            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [propertyId, sequence, preimage.event_type, bidderId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
-        );
+        await appendEvent({
+            client: client,
+            propertyId: propertyId,
+            eventType: eventType,
+            actorId: bidderId,
+            details: details
+        });
 
         await client.query("COMMIT");
 
@@ -258,46 +227,20 @@ export async function withdrawBid(propertyId: number, offerId: number, _previous
             return { error: "Unable to withdraw: that offer wasn't found" };
         }
 
-        const tail = await client.query(
-            `SELECT sequence, hash FROM events
-             WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
-            [propertyId]
-        );
+    
 
-        let sequence: number;
-        let prevHash: string;
-        if (tail.rows.length === 0) {
-            sequence = 1;
-            prevHash = GENESIS_HASH;
-        } else {
-            sequence = tail.rows[0].sequence + 1;
-            prevHash = tail.rows[0].hash;
-        }
-
-        const timestamp = new Date().toISOString();
         const details = {
             offer_id: offerId,
             amount: offerCheck.rows[0].current_amount,
         };
-        const nonce = makeNonce();
-        const preimage: EventPreimage = {
-            property_id: propertyId,
-            sequence,
-            event_type: "BID_WITHDRAWN",
-            actor_id: bidderId,
-            timestamp,
-            details,
-            nonce,
-            prev_hash: prevHash,
-        };
 
-        const { hash, canonicalDetails } = hashEvent(preimage);
-
-        await client.query(
-            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [propertyId, sequence, "BID_WITHDRAWN", bidderId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
-        );
+        await appendEvent({
+            client: client,
+            propertyId: propertyId,
+            eventType: "BID_WITHDRAWN",
+            actorId: bidderId,
+            details: details,
+        });
 
         await client.query(
             `UPDATE offers SET status = $1, updated_at = NOW() WHERE offer_id = $2`,

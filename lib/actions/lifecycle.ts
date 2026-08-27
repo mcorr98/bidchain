@@ -2,12 +2,11 @@
 import { auth } from "@/auth";
 import { canManageProperty, isPropertyVendor } from "@/lib/permissions";
 import pool from "@/lib/db";
-import { GENESIS_HASH, makeNonce, EventPreimage, hashEvent } from "@/lib/chain";
 import { revalidatePath } from "next/cache";
 import { BiddingState } from "@/lib/types";
 import { redirect } from "next/navigation";
 import { ListingType } from "@/lib/types";
-import { isActiveAgency, hasVendorProfile } from "@/lib/permissions";
+import { isActiveAgency } from "@/lib/permissions";
 import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
@@ -15,6 +14,7 @@ import { sendVendorActivationEmail } from "@/lib/email";
 import { hashToken, invitationExpiry, makeInvitationToken, invitationLink } from "@/lib/invitations";
 import { standardiseEmail } from "@/lib/format";
 import { matchesMagicBytes } from "@/lib/uploads_validation";
+import { appendEvent } from "@/lib/events";
 
 type ParsedOptionalWholeNumber = number | null | "invalid";
 
@@ -70,55 +70,13 @@ export async function closeBidding(propertyId: number, _previousState: unknown, 
     try {
         await client.query("BEGIN");
 
-        const locked = await client.query<{ state: BiddingState }>(
-            `SELECT state FROM properties WHERE property_id = $1 FOR UPDATE`,
-            [propertyId]
-        );
-
-        if (locked.rows[0].state !== "open") {
-            await client.query("ROLLBACK");
-            return { error: "Bidding is not currently open" };
-        }
-        const tail = await client.query(
-            `SELECT sequence, hash
-            FROM events
-            WHERE property_id = $1
-            ORDER BY sequence DESC
-            LIMIT 1`,
-            [propertyId]
-        );
-
-        let sequence: number;
-        let prevHash: string;
-
-        if (tail.rows.length === 0) {
-            sequence = 1;
-            prevHash = GENESIS_HASH;
-        } else {
-            sequence = tail.rows[0].sequence + 1;
-            prevHash = tail.rows[0].hash;
-        }
-
-        const timestamp = new Date().toISOString();
-        const details = {}
-        const nonce = makeNonce();
-        const preimage: EventPreimage = {
-            property_id: propertyId,
-            sequence,
-            event_type: "BIDDING_CLOSED",
-            actor_id: userId,
-            timestamp,
-            details,
-            nonce,
-            prev_hash: prevHash,
-        };
-
-        const { hash, canonicalDetails } = hashEvent(preimage);
-        await client.query(
-            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [propertyId, sequence, preimage.event_type, userId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
-        );
+        await appendEvent({
+            client: client,
+            propertyId: propertyId,
+            eventType: "BIDDING_CLOSED",
+            actorId: userId,
+            details: {},
+        });
 
         await client.query(
             `UPDATE properties SET state = $1 WHERE property_id = $2`,
@@ -178,13 +136,6 @@ export async function createListing(_previousState: unknown, formData: FormData)
         if (existingUser.role === "agent") {
             return { error: "That email belongs to an agent account: agents cannot also be registered as vendors", values: formValues(formData) };
         }
-        if (await hasVendorProfile(existingUser.user_id)) {
-            vendorId = existingUser.user_id;
-        }
-
-        // An existing account without a vendor profile purposefully will leave
-        // vendorId null. The DB transaction below creates a draft listing and invites
-        // this email. After acceptance we attach the vendor profile to the account they already have.
 
     }
 
@@ -371,30 +322,19 @@ export async function publishListing(propertyId: number, _previousState: unknown
             return { error: "The vendor hasn't accepted their invitation yet" };
         }
 
-        const timestamp = new Date().toISOString();
         const details = {
             asking_price_snapshot: locked.rows[0].asking_price,
             listing_type_snapshot: locked.rows[0].listing_type,
             listing_url_snapshot: locked.rows[0].listing_url,
         };
-        const nonce = makeNonce();
-        const preimage: EventPreimage = {
-            property_id: propertyId,
-            sequence: 1,
-            event_type: "LISTING_CREATED",
-            actor_id: agentId,
-            timestamp,
-            details,
-            nonce,
-            prev_hash: GENESIS_HASH,
-        };
-        const { hash, canonicalDetails } = hashEvent(preimage);
 
-        await client.query(
-            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [propertyId, 1, "LISTING_CREATED", agentId, timestamp, details, canonicalDetails, nonce, hash, GENESIS_HASH]
-        );
+        await appendEvent({
+            client: client,
+            propertyId: propertyId,
+            eventType: "LISTING_CREATED",
+            actorId: agentId,
+            details: details,
+        });
 
         await client.query(
             `UPDATE properties SET state = 'open', status = 'active', updated_at = NOW()
@@ -470,47 +410,18 @@ export async function acceptBid(propertyId: number, offerId: number, _previousSt
 
         const acceptedAmount = offerCheck.rows[0].current_amount;
 
-        const tail = await client.query(
-            `SELECT sequence, hash FROM events
-            WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
-            [propertyId]
-        );
-
-        let sequence: number;
-        let prevHash: string;
-
-        if (tail.rows.length === 0) {
-            sequence = 1;
-            prevHash = GENESIS_HASH;
-        } else {
-            sequence = tail.rows[0].sequence + 1;
-            prevHash = tail.rows[0].hash;
-        }
-
-        const timestamp = new Date().toISOString();
         const details = {
             offer_id: offerId,
             amount: acceptedAmount,
         };
-        const nonce = makeNonce();
-        const preimage: EventPreimage = {
-            property_id: propertyId,
-            sequence,
-            event_type: "BID_ACCEPTED",
-            actor_id: vendorId,
-            timestamp,
-            details,
-            nonce,
-            prev_hash: prevHash,
-        };
 
-        const { hash, canonicalDetails } = hashEvent(preimage);
-
-        await client.query(
-            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [propertyId, sequence, "BID_ACCEPTED", vendorId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
-        );
+        await appendEvent({
+            client: client,
+            propertyId: propertyId,
+            eventType: "BID_ACCEPTED",
+            actorId: vendorId,
+            details: details,
+        });
 
         await client.query(
             `UPDATE offers SET status = $1, updated_at = NOW() WHERE offer_id = $2`,
@@ -576,44 +487,13 @@ export async function completeSale(propertyId: number, _previousState: unknown, 
             return { error: "Only a sale-agreed property can be completed" };
         }
 
-        const tail = await client.query(
-            `SELECT sequence, hash FROM events
-            WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
-            [propertyId]
-        );
-
-        let sequence: number;
-        let prevHash: string;
-
-        if (tail.rows.length === 0) {
-            sequence = 1;
-            prevHash = GENESIS_HASH;
-        } else {
-            sequence = tail.rows[0].sequence + 1;
-            prevHash = tail.rows[0].hash;
-        }
-
-        const timestamp = new Date().toISOString();
-        const details = {};
-        const nonce = makeNonce();
-        const preimage: EventPreimage = {
-            property_id: propertyId,
-            sequence,
-            event_type: "SALE_COMPLETED",
-            actor_id: agentId,
-            timestamp,
-            details,
-            nonce,
-            prev_hash: prevHash,
-        };
-
-        const { hash, canonicalDetails } = hashEvent(preimage);
-
-        await client.query(
-            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [propertyId, sequence, "SALE_COMPLETED", agentId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
-        );
+        await appendEvent({
+            client: client,
+            propertyId: propertyId,
+            eventType: "SALE_COMPLETED",
+            actorId: agentId,
+            details: {},
+        });
 
         await client.query(
             `UPDATE properties SET state = $1, status = $2, updated_at = NOW()
@@ -699,48 +579,20 @@ export async function collapseSale(propertyId: number, _previousState: unknown, 
         }
         const reason = reasonRaw;
 
-        const tail = await client.query(
-            `SELECT sequence, hash FROM events
-             WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
-            [propertyId]
-        );
-
-        let sequence: number;
-        let prevHash: string;
-        if (tail.rows.length === 0) {
-            sequence = 1;
-            prevHash = GENESIS_HASH;
-        } else {
-            sequence = tail.rows[0].sequence + 1;
-            prevHash = tail.rows[0].hash;
-        }
-
-        const timestamp = new Date().toISOString();
         const details = {
             failed_offer_id: failedOffer.offer_id,
             amount: failedOffer.current_amount,
             initiated_by: initiatedBy,
             reason: reason,
         };
-        const nonce = makeNonce();
-        const preimage: EventPreimage = {
-            property_id: propertyId,
-            sequence,
-            event_type: "SALE_COLLAPSED",
-            actor_id: userId,
-            timestamp,
-            details,
-            nonce,
-            prev_hash: prevHash,
-        };
 
-        const { hash, canonicalDetails } = hashEvent(preimage);
-
-        await client.query(
-            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [propertyId, sequence, "SALE_COLLAPSED", userId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
-        );
+        await appendEvent({
+            client: client,
+            propertyId: propertyId,
+            eventType: "SALE_COLLAPSED",
+            actorId: userId,
+            details: details,
+        });
 
         await client.query(
             `UPDATE offers SET status = $1, updated_at = NOW() WHERE offer_id = $2`,
@@ -818,47 +670,18 @@ export async function relistProperty(propertyId: number, _previousState: unknown
 
         const previousAskingPrice = locked.rows[0].asking_price;
 
-        const tail = await client.query(
-            `SELECT sequence, hash FROM events 
-            WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
-            [propertyId]
-        );
-
-        let sequence: number;
-        let prevHash: string;
-
-        if (tail.rows.length === 0) {
-            sequence = 1;
-            prevHash = GENESIS_HASH;
-        } else {
-            sequence = tail.rows[0].sequence + 1;
-            prevHash = tail.rows[0].hash;
-        }
-
-        const timestamp = new Date().toISOString();
         const details = {
             previous_asking_price: previousAskingPrice,
             new_asking_price: newAskingPricePence,
         };
-        const nonce = makeNonce();
-        const preimage: EventPreimage = {
-            property_id: propertyId,
-            sequence,
-            event_type: "PROPERTY_RELISTED",
-            actor_id: agentId,
-            timestamp,
-            details,
-            nonce,
-            prev_hash: prevHash,
-        };
 
-        const { hash, canonicalDetails } = hashEvent(preimage);
-
-        await client.query(
-            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [propertyId, sequence, "PROPERTY_RELISTED", agentId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
-        );
+        await appendEvent({
+            client: client,
+            propertyId: propertyId,
+            eventType: "PROPERTY_RELISTED",
+            actorId: agentId,
+            details: details,
+        });
 
         await client.query(
             `UPDATE properties SET asking_price = $1, state = $2, updated_at = NOW()
@@ -937,45 +760,17 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
             return { error: "Only an open or closed listing can be withdrawn" };
         }
 
-        const tail = await client.query(
-            `SELECT sequence, hash FROM events
-            WHERE property_id = $1 ORDER BY sequence DESC LIMIT 1`,
-            [propertyId]
-        );
-
-        let sequence: number;
-        let prevHash: string;
-        if (tail.rows.length === 0) {
-            sequence = 1;
-            prevHash = GENESIS_HASH;
-        } else {
-            sequence = tail.rows[0].sequence + 1;
-            prevHash = tail.rows[0].hash;
-        }
-
-        const timestamp = new Date().toISOString();
         const details = {
             reason: reason,
         };
-        const nonce = makeNonce();
-        const preimage: EventPreimage = {
-            property_id: propertyId,
-            sequence,
-            event_type: "LISTING_WITHDRAWN",
-            actor_id: agentId,
-            timestamp,
-            details,
-            nonce,
-            prev_hash: prevHash,
-        };
 
-        const { hash, canonicalDetails } = hashEvent(preimage);
-
-        await client.query(
-            `INSERT INTO events (property_id, sequence, event_type, actor_id, timestamp, details, canonical_details, nonce, hash, prev_hash)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-            [propertyId, sequence, "LISTING_WITHDRAWN", agentId, timestamp, details, canonicalDetails, nonce, hash, prevHash]
-        );
+        await appendEvent({
+            client: client,
+            propertyId: propertyId,
+            eventType: "LISTING_WITHDRAWN",
+            actorId: agentId,
+            details: details,
+        });
 
         // Any live offers expire with the listing
         await client.query(
@@ -1167,14 +962,11 @@ export async function replaceVendorInvitation(propertyId: number, _previousState
         `SELECT user_id, role FROM users WHERE email = $1`,
         [vendorEmail]
     );
-    let existingVendorId: number | null = null;
+
     if (userResult.rowCount !== null && userResult.rowCount > 0) {
         const existingUser = userResult.rows[0];
         if (existingUser.role === "agent") {
             return { error: "That email belongs to an agent account: agents cannot also be registered as vendors" };
-        }
-        if (await hasVendorProfile(existingUser.user_id)) {
-            existingVendorId = existingUser.user_id;
         }
     }
 
@@ -1207,24 +999,18 @@ export async function replaceVendorInvitation(propertyId: number, _previousState
             WHERE property_id = $1 AND purpose = 'vendor_activation' AND accepted_at IS NULL`,
             [propertyId]
         );
+        await client.query(
+            `UPDATE properties SET vendor_id = NULL WHERE property_id = $1`,
+            [propertyId]
+        );
 
-        if (existingVendorId !== null) {
-            await client.query(
-                `UPDATE properties SET vendor_id = $1 WHERE property_id = $2`,
-                [existingVendorId, propertyId]
-            );
-        } else {
-            await client.query(
-                `UPDATE properties SET vendor_id = NULL WHERE property_id = $1`,
-                [propertyId]
-            );
-            inviteToken = makeInvitationToken();
-            await client.query(
-                `INSERT INTO invitations (token_hash, email, purpose, property_id, created_by, expires_at)
-                VALUES ($1, $2, 'vendor_activation', $3, $4, $5)`,
-                [hashToken(inviteToken), vendorEmail, propertyId, agentId, invitationExpiry()]
-            );
-        }
+        inviteToken = makeInvitationToken();
+        await client.query(
+            `INSERT INTO invitations (token_hash, email, purpose, property_id, created_by, expires_at)
+            VALUES ($1, $2, 'vendor_activation', $3, $4, $5)`,
+            [hashToken(inviteToken), vendorEmail, propertyId, agentId, invitationExpiry()]
+        );
+
 
         await client.query("COMMIT");
     } catch (err) {
