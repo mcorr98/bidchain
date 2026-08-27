@@ -2,6 +2,7 @@ import pool from "@/lib/db";
 import { auth } from "@/auth";
 import { canManageProperty, isPropertyVendor } from "@/lib/permissions";
 import { EventRow, verifyChain } from "@/lib/chain";
+import { signRecord } from "@/lib/signing";
 
 export async function GET(request: Request, { params }: { params: Promise<{ propertyId: string }> }) {
     const { propertyId } = await params;
@@ -44,8 +45,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ prop
         note: "Each event's hash is SHA-256 over: property_id | sequence | event_type | actor_id | timestamp | canonical_details | nonce | prev_hash. Recompute from canonical_details to verify independently.",
         events: eventsResult.rows,
     };
+    const recordJson = JSON.stringify(record);
+    const signature = signRecord(recordJson);
 
-    return new Response(JSON.stringify(record, null, 2), {
+    const envelope = {
+        record: record,
+        signature: signature,
+    };
+
+    return new Response(JSON.stringify(envelope, null, 2), {
         headers: {
             "Content-Type": "application/json",
             "Content-Disposition": `attachment; filename="bidchain-record-property-${id}.json"`,

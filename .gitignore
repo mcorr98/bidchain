@@ -44,4 +44,5 @@ next-env.d.ts
 scripts/seed.mjs
 
 # Identity documents must never be committed
-private/
+private/ 
+verify.html
