@@ -754,8 +754,7 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
         );
 
         const currentState = locked.rows[0].state;
-
-        if (currentState !== "open" && currentState !== "closed") {
+        if (currentState !== "open" && currentState !== "closed" && currentState !== "collapsed") {
             await client.query("ROLLBACK");
             return { error: "Only an open or closed listing can be withdrawn" };
         }

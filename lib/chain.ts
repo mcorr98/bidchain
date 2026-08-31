@@ -18,7 +18,7 @@ function sha256(text: string): string {
 export const GENESIS_HASH = "0".repeat(64);
 
 /**
- * The eleven event types.
+ * The chain event types.
  */
 export type EventType =
     "LISTING_CREATED"
@@ -34,6 +34,49 @@ export type EventType =
     | "PROPERTY_RELISTED"
     | "SALE_COMPLETED";
 
+export type ChainState =
+    "unlisted"
+    | "open"
+    | "closed"
+    | "sale_agreed"
+    | "collapsed"
+    | "completed"
+    | "withdrawn";
+
+type GrammarRule = {
+    allowedIn: ChainState[];
+    leadsTo: ChainState | null;
+};
+
+const EVENT_GRAMMAR: Record<EventType, GrammarRule> = {
+    LISTING_CREATED: { allowedIn: ["unlisted"], leadsTo: "open" },
+    BID_PLACED: { allowedIn: ["open"], leadsTo: null },
+    BID_REVISED: { allowedIn: ["open"], leadsTo: null },
+    BID_WITHDRAWN: { allowedIn: ["open", "closed"], leadsTo: null },
+    BIDDING_CLOSED: { allowedIn: ["open"], leadsTo: "closed" },
+    BIDDING_REOPENED: { allowedIn: ["closed"], leadsTo: "open" },
+    BID_ACCEPTED: { allowedIn: ["closed"], leadsTo: "sale_agreed" },
+    SALE_COMPLETED: { allowedIn: ["sale_agreed"], leadsTo: "completed" },
+    SALE_COLLAPSED: { allowedIn: ["sale_agreed"], leadsTo: "collapsed" },
+    BID_RECONFIRMED: { allowedIn: ["collapsed"], leadsTo: null },
+    PROPERTY_RELISTED: { allowedIn: ["collapsed"], leadsTo: "open" },
+    LISTING_WITHDRAWN: { allowedIn: ["open", "closed", "collapsed"], leadsTo: "withdrawn" },
+};
+
+export function isEventLegal(eventType: EventType, state: ChainState): boolean {
+    return EVENT_GRAMMAR[eventType].allowedIn.includes(state);
+}
+
+export function nextChainState(eventType: EventType, state: ChainState): ChainState {
+    if (!isEventLegal(eventType, state)) {
+        return state;
+    }
+    const leadsTo = EVENT_GRAMMAR[eventType].leadsTo;
+    if (leadsTo === null) {
+        return state;
+    }
+    return leadsTo;
+}
 
 /**
  * Values that can survive JSON.stringify.
@@ -52,7 +95,7 @@ export type JsonValue =
  */
 export type Failure = {
     sequence: number,
-    reason: "hash mismatch" | "broken link" | "projection mismatch" | "sequence gap"
+    reason: "hash mismatch" | "broken link" | "projection mismatch" | "sequence gap" | "illegal event"
 }
 
 export type EventRow = {
@@ -150,6 +193,7 @@ export function verifyChain(rows: EventRow[]): { valid: boolean, eventCount: num
 
     let expectedPrevHash = GENESIS_HASH;
     let expectedSequence = 1;
+    let state: ChainState = "unlisted";
 
     for (const row of rows) {
         if (row.prev_hash !== expectedPrevHash) {
@@ -182,6 +226,11 @@ export function verifyChain(rows: EventRow[]): { valid: boolean, eventCount: num
         if (row.sequence !== expectedSequence) {
             failures.push({ sequence: row.sequence, reason: "sequence gap" })
         }
+
+        if (!isEventLegal(row.event_type, state)) {
+            failures.push({ sequence: row.sequence, reason: "illegal event" });
+        }
+        state = nextChainState(row.event_type, state);
 
         expectedPrevHash = row.hash;
         expectedSequence += 1;

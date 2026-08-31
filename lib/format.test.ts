@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatPrice, listingTypeLabel, featuresLine } from "./format";
+import { formatPrice, listingTypeLabel, featuresLine, fundingLabel, buyerPositionLabel, standardiseEmail, eventTypeLabel } from "./format";
 
 describe("formatPrice", () => {
     it("formats whole pounds without decimals", () => {
@@ -48,5 +48,53 @@ describe("featuresLine", () => {
 
     it("returns an empty string when nothing is known", () => {
         expect(featuresLine(null, null, null)).toBe("");
+    });
+});
+
+describe("formatPrice fractional branch", () => {
+    it("shows pence when the amount is not whole pounds", () => {
+        expect(formatPrice(249950050)).toBe("£2,499,500.50");
+    });
+
+
+    describe("eventTypeLabel", () => {
+        it("labels every event type in the vocabulary", () => {
+            expect(eventTypeLabel("LISTING_CREATED")).toBe("Listing created");
+            expect(eventTypeLabel("BID_PLACED")).toBe("Bid placed");
+            expect(eventTypeLabel("BID_REVISED")).toBe("Bid revised");
+            expect(eventTypeLabel("BID_WITHDRAWN")).toBe("Bid withdrawn");
+            expect(eventTypeLabel("BID_RECONFIRMED")).toBe("Bid reconfirmed");
+            expect(eventTypeLabel("BID_ACCEPTED")).toBe("Bid accepted");
+            expect(eventTypeLabel("BIDDING_CLOSED")).toBe("Bidding closed");
+            expect(eventTypeLabel("BIDDING_REOPENED")).toBe("Bidding reopened");
+            expect(eventTypeLabel("LISTING_WITHDRAWN")).toBe("Listing withdrawn");
+            expect(eventTypeLabel("SALE_COLLAPSED")).toBe("Sale collapsed");
+            expect(eventTypeLabel("PROPERTY_RELISTED")).toBe("Property relisted");
+            expect(eventTypeLabel("SALE_COMPLETED")).toBe("Sale Completed");
+        });
+    });
+
+    describe("standardiseEmail", () => {
+        it("lowercases and trims", () => {
+            expect(standardiseEmail("  Dan.Boyd@Example.COM ")).toBe("dan.boyd@example.com");
+        });
+        it("leaves an already-normal email untouched", () => {
+            expect(standardiseEmail("sean@bidchain.test")).toBe("sean@bidchain.test");
+        });
+    });
+
+    describe("buyerPositionLabel and fundingLabel", () => {
+        it("labels the position vocabulary and blanks the unknown", () => {
+            expect(buyerPositionLabel("ftb")).toBe("First-time buyer");
+            expect(buyerPositionLabel("chain")).toBe("In a chain");
+            expect(buyerPositionLabel("no_chain")).toBe("Nothing to sell");
+            expect(buyerPositionLabel(null)).toBe("");
+        });
+        it("labels the funding vocabulary and blanks the unknown", () => {
+            expect(fundingLabel("cash")).toBe("Cash");
+            expect(fundingLabel("mortgage")).toBe("Mortgage");
+            expect(fundingLabel("co_ownership")).toBe("Co-Ownership");
+            expect(fundingLabel(null)).toBe("");
+        });
     });
 });

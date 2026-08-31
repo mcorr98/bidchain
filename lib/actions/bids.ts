@@ -74,7 +74,7 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
 
     const fundingRaw = formData.get("funding");
     let funding: string;
-    if (fundingRaw === "cash" || fundingRaw === "mortgage") {
+    if (fundingRaw === "cash" || fundingRaw === "mortgage" || fundingRaw === "co_ownership") {
         funding = fundingRaw;
     } else {
         return { error: "Select how the purchase's funding method" };
@@ -129,7 +129,7 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
         if (existingOffer.rows.length === 0) {
             const insert = await client.query<{ offer_id: number }>(
                 `INSERT INTO offers (property_id, bidder_id, current_amount, conditions, buyer_position, funding, status)
-                VALUES ($1, $2, $3, $4, $5, $6 'active')
+                VALUES ($1, $2, $3, $4, $5, $6, 'active')
                 RETURNING offer_id`,
                 [propertyId, bidderId, amountPence, conditions, buyerPosition, funding]
             );

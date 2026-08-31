@@ -1,5 +1,5 @@
 import { PoolClient } from "pg";
-import { EventPreimage, EventType, GENESIS_HASH, JsonValue, hashEvent, makeNonce } from "@/lib/chain";
+import { EventPreimage, EventType, GENESIS_HASH, JsonValue, hashEvent, makeNonce, ChainState, isEventLegal, nextChainState } from "@/lib/chain";
 
 type AppendEventInput = {
     client: PoolClient;
@@ -26,22 +26,33 @@ type AppendedEvent = {
  * used outside a transaction by mistake.
  */
 export async function appendEvent(input: AppendEventInput): Promise<AppendedEvent> {
-    const tail = await input.client.query<{ sequence: number; hash: string }>(
-        `SELECT sequence, hash FROM events
+
+    const history = await input.client.query<{ sequence: number; hash: string; event_type: EventType }>(
+        `SELECT sequence, hash, event_type FROM events
         WHERE property_id = $1
-        ORDER BY sequence DESC
-        LIMIT 1`,
+        ORDER BY sequence ASC`,
         [input.propertyId]
     );
 
     let sequence: number;
     let prevHash: string;
-    if (tail.rows.length === 0) {
+    if (history.rows.length === 0) {
         sequence = 1;
         prevHash = GENESIS_HASH;
     } else {
-        sequence = tail.rows[0].sequence + 1;
-        prevHash = tail.rows[0].hash;
+        const tail = history.rows[history.rows.length - 1];
+        sequence = tail.sequence + 1;
+        prevHash = tail.hash;
+    }
+
+    let state: ChainState = "unlisted";
+    for (const priorEvent of history.rows) {
+        state = nextChainState(priorEvent.event_type, state);
+    }
+    if (!isEventLegal(input.eventType, state)) {
+        throw new Error(
+            "Illegal event for chain state: " + input.eventType + " cannot follow a chain in state '" + state + "'"
+        );
     }
 
     const timestamp = new Date().toISOString();

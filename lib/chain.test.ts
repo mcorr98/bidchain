@@ -1,17 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { canonicalise, hashEvent, verifyChain, makeNonce, GENESIS_HASH, EventPreimage, EventRow } from "./chain";
+import { canonicalise, hashEvent, verifyChain, makeNonce, GENESIS_HASH, EventPreimage, EventRow, EventType } from "./chain";
 
-function buildChain(count: number): EventRow[] {
+function buildChainOfTypes(eventTypes: EventType[]): EventRow[] {
     const rows: EventRow[] = [];
     let prevHash = GENESIS_HASH;
 
-    for (let sequence = 1; sequence <= count; sequence++) {
+    for (let sequence = 1; sequence <= eventTypes.length; sequence++) {
+        const eventType = eventTypes[sequence - 1];
         const timestamp = new Date(Date.UTC(2026, 0, sequence, 12, 0, 0)).toISOString();
         const details = { amount: sequence * 100000, offer_id: sequence };
         const preimage: EventPreimage = {
             property_id: 1,
             sequence,
-            event_type: "BID_PLACED",
+            event_type: eventType,
             actor_id: 5,
             timestamp,
             details,
@@ -23,7 +24,7 @@ function buildChain(count: number): EventRow[] {
         rows.push({
             property_id: 1,
             sequence,
-            event_type: "BID_PLACED",
+            event_type: eventType,
             actor_id: 5,
             timestamp: new Date(timestamp),
             details,
@@ -37,6 +38,14 @@ function buildChain(count: number): EventRow[] {
     }
 
     return rows;
+}
+
+function buildChain(count: number): EventRow[] {
+    const eventTypes: EventType[] = ["LISTING_CREATED"];
+    for (let index = 2; index <= count; index++) {
+        eventTypes.push("BID_PLACED");
+    }
+    return buildChainOfTypes(eventTypes);
 }
 
 describe("canonicalise", () => {
@@ -215,4 +224,31 @@ describe("verifyChain", () => {
 
         expect(verifyChain(chain).valid).toBe(true);
     });
+
+    describe("verifyChain grammar check", () => {
+    it("flags a chain with no genesis at sequence 1", () => {
+        const rows = buildChainOfTypes(["BID_PLACED", "LISTING_CREATED"]);
+        const verdict = verifyChain(rows);
+        expect(verdict.valid).toBe(false);
+        const illegal = verdict.failures.filter((failure) => failure.reason === "illegal event");
+        expect(illegal.map((failure) => failure.sequence)).toEqual([1]);
+    });
+
+    it("flags a bid placed after completion", () => {
+        const rows = buildChainOfTypes([
+            "LISTING_CREATED", "BIDDING_CLOSED", "BID_ACCEPTED", "SALE_COMPLETED", "BID_PLACED",
+        ]);
+        const verdict = verifyChain(rows);
+        const illegal = verdict.failures.filter((failure) => failure.reason === "illegal event");
+        expect(illegal.map((failure) => failure.sequence)).toEqual([5]);
+    });
+
+    it("a grammatical chain raises no illegal-event failures", () => {
+        const rows = buildChainOfTypes([
+            "LISTING_CREATED", "BID_PLACED", "BID_REVISED", "BIDDING_CLOSED",
+            "BID_ACCEPTED", "SALE_COLLAPSED", "PROPERTY_RELISTED", "BID_PLACED",
+        ]);
+        expect(verifyChain(rows).valid).toBe(true);
+    });
+});
 });
