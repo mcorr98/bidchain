@@ -126,7 +126,7 @@ export async function getReportMetrics(agentId: number, fromIso: string, toIso: 
         [agentId, fromIso, toIso]
     );
 
-    // ...and how much price is given up on relisting after one.
+    // How does relisting after collapse impact price?
     const relistDiscountResult = await pool.query<{ avg_discount: number | null }>(
         `SELECT AVG(1 - (e.details->>'new_asking_price')::numeric / (e.details->>'previous_asking_price')::numeric)::float AS avg_discount
         FROM events e

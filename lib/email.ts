@@ -57,3 +57,31 @@ export async function sendVendorActivationEmail(to: string, propertyAddress: str
     ].join("\n");
     return sendEmail(to, subject, text);
 }
+
+/**
+ * Emails a bidder their signed chain receipt after a bid. Fail-soft like
+ * every sender here: a dead mail server must never affect a committed bid.
+ */
+export async function sendBidReceiptEmail(to: string, propertyAddress: string, receiptJson: string, filename: string): Promise<boolean> {
+    try {
+        await transporter.sendMail({
+            from: process.env.EMAIL_FROM ?? "BidChain <noreply@bidchain.test>",
+            to,
+            subject: "Your bid receipt for " + propertyAddress,
+            text: [
+                "Your bid on " + propertyAddress + " has been recorded.",
+                "",
+                "Attached is your signed chain receipt. Keep it - it commits to the",
+                "full history of bidding at the moment your bid was recorded, and can",
+                "be used later to verify that the record has not been altered.",
+            ].join("\n"),
+            attachments: [
+                { filename: filename, content: receiptJson, contentType: "application/json" },
+            ],
+        });
+        return true;
+    } catch (err) {
+        console.error("sendBidReceiptEmail failed:", err);
+        return false;
+    }
+}

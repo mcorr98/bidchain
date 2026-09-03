@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
-import pool from "@/lib/db";
 import { canViewOffers } from "@/lib/permissions";
+import { buildSignedReceipt } from "@/lib/receipts";
 
 export async function GET(request: Request, { params }: { params: Promise<{ propertyId: string }> }) {
     const { propertyId } = await params;
@@ -20,35 +20,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ prop
         return new Response("Forbidden", { status: 403 });
     }
 
-    const tailResult = await pool.query(
-        `SELECT sequence, event_type, timestamp, hash
-        FROM events
-        WHERE property_id = $1
-        ORDER BY sequence DESC
-        LIMIT 1`,
-        [id]
-    );
-
-    if (tailResult.rowCount === 0) {
+    const receipt = await buildSignedReceipt(id);
+    if (receipt === null) {
         return new Response("Not found", { status: 404 });
     }
-    const tail = tailResult.rows[0];
-
-    // The tail hash represetns the entire history up until that point so anyone holding
-    // the receipt can detect any later rewrite of that history.
-    const receipt = {
-        property_id: id,
-        issued_at: new Date().toISOString(),
-        tail_sequence: tail.sequence,
-        tail_event_type: tail.event_type,
-        tail_event_timestamp: tail.timestamp.toISOString(),
-        tail_hash: tail.hash,
-        note: "This is a encoded record of the full event history up to this point. Keep it - it can be used to detect any later changes to this history.",
-    };
 
     return Response.json(receipt, {
         headers: {
-            "Content-Disposition": `attachment; filename="bidchain-receipt-property-${id}-seq-${tail.sequence}.json"`,
+            "Content-Disposition": `attachment; filename="bidchain-receipt-property-${id}-seq-${receipt.record.tail_sequence}.json"`,
         },
     });
 }

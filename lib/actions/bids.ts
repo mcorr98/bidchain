@@ -7,6 +7,8 @@ import { canBidOn, hasBidderProfile } from "@/lib/permissions";
 import { EventType, JsonValue } from "@/lib/chain";
 import { BiddingState } from "@/lib/types";
 import { appendEvent } from "@/lib/events";
+import { sendBidReceiptEmail } from "@/lib/email";
+import { buildSignedReceipt } from "@/lib/receipts"; 
 
 /**
  * Places a bid on a property. Writes to the chain only after input passes through validation stack:
@@ -26,18 +28,16 @@ import { appendEvent } from "@/lib/events";
 export async function placeBid(propertyId: number, _previousState: unknown, formData: FormData) {
 
     const session = await auth();
-
     if (!session) {
         redirect("/login");
     }
-
     const bidderId = Number(session.user.id);
 
     if (!(await hasBidderProfile(bidderId))) {
         return { error: "Only verified bidders can place bids on a property" };
     }
 
-    const property = await pool.query(`SELECT property_id, state FROM properties WHERE properties.property_id = $1`, [propertyId]);
+    const property = await pool.query(`SELECT property_id, state, address_line_1, city FROM properties WHERE properties.property_id = $1`, [propertyId]);
 
     if (property.rowCount === 0 || property.rows[0].state !== "open") {
         return { error: "This property is not currently accepting bids" };
@@ -136,7 +136,7 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
 
             offerId = insert.rows[0].offer_id;
             eventType = "BID_PLACED";
-            details = { offer_id: offerId, amount: amountPence, conditions, condition_flags: conditionFlags, note: note, buyer_position: buyerPosition, funding: funding  };
+            details = { offer_id: offerId, amount: amountPence, conditions, condition_flags: conditionFlags, note: note, buyer_position: buyerPosition, funding: funding };
 
         } else {
             const previous = existingOffer.rows[0];
@@ -154,12 +154,17 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
                 old_amount: previous.current_amount,
                 new_amount: amountPence,
                 conditions,
-                condition_flags: conditionFlags, 
-                note: note, 
-                buyer_position: buyerPosition, 
-                funding: funding 
+                condition_flags: conditionFlags,
+                note: note,
+                buyer_position: buyerPosition,
+                funding: funding
             };
         }
+
+        await client.query(
+            `UPDATE bidder_profiles SET buyer_position = $1 WHERE user_id = $2`,
+            [buyerPosition, bidderId]
+        );
 
         await appendEvent({
             client: client,
@@ -177,6 +182,19 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
         return { error: "Something went wrong placing your bid" }
     } finally {
         client.release();
+    }
+
+    if (typeof session.user.email === "string" && session.user.email !== "") {
+        const receipt = await buildSignedReceipt(propertyId);
+        if (receipt !== null) {
+            const address = property.rows[0].address_line_1 + ", " + property.rows[0].city;
+            await sendBidReceiptEmail(
+                session.user.email,
+                address,
+                JSON.stringify(receipt, null, 2),
+                `bidchain-receipt-property-${propertyId}-seq-${receipt.record.tail_sequence}.json`
+            );
+        }
     }
 
     revalidatePath(`/properties/${propertyId}`);
@@ -227,7 +245,7 @@ export async function withdrawBid(propertyId: number, offerId: number, _previous
             return { error: "Unable to withdraw: that offer wasn't found" };
         }
 
-    
+
 
         const details = {
             offer_id: offerId,
@@ -256,6 +274,7 @@ export async function withdrawBid(propertyId: number, offerId: number, _previous
     } finally {
         client.release();
     }
+
 
     revalidatePath(`/properties/${propertyId}`);
     return { success: true };

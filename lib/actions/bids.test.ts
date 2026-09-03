@@ -149,6 +149,12 @@ describe("placeBid happy path", () => {
         expect(events.rows[1].event_type).toBe("BID_PLACED");
         expect(events.rows[1].details).toMatchObject({ amount: 26000000, buyer_position: "ftb", funding: "mortgage" });
         expect(verifyChain(events.rows).valid).toBe(true);
+
+        const profile = await pool.query<{ buyer_position: string }>(
+        `SELECT buyer_position FROM bidder_profiles WHERE user_id = $1`,
+        [bidderId]
+        );
+        expect(profile.rows[0].buyer_position).toBe("ftb");
     });
 
     test("Co-Ownership is a first-class funding method", async () => {
