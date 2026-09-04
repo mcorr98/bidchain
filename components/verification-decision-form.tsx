@@ -7,6 +7,9 @@ type DecisionFormProps = {
     documentHash: string;
 };
 
+/**
+ * Agent form that approves or rejects a bidder's identity document.
+ */
 export default function VerificationDecisionForm(props: DecisionFormProps) {
     const decideForBidder = decideVerification.bind(null, props.bidderId);
     const [state, action, pending] = useActionState(decideForBidder, null);

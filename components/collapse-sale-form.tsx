@@ -9,6 +9,9 @@ type CollapseSaleFormProps = {
 
 };
 
+/**
+ * Form that records an agreed sale collapsing, with a reason.
+ */
 export default function CollapseSaleForm(props: CollapseSaleFormProps) {
     const collapseThisSale = collapseSale.bind(null, props.propertyId);
     const [state, action, pending] = useActionState(collapseThisSale, null);

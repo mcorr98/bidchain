@@ -7,6 +7,9 @@ type CloseBiddingButtonProps = {
     propertyId: number;
 };
 
+/**
+ * Agent button that closes bidding on a property.
+ */
 export default function CloseBiddingButton(props: CloseBiddingButtonProps) {
     const closeBiddingForProperty = closeBidding.bind(null, props.propertyId);
     const [state, action, pending] = useActionState(closeBiddingForProperty, null);

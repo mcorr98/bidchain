@@ -12,6 +12,9 @@ type LoginPageProps = {
     searchParams: Promise<LoginSearchParams>;
 };
 
+/**
+ * Login page.
+ */
 export default async function LoginPage(props: LoginPageProps) {
     const params = await props.searchParams;
 

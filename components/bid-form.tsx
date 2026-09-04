@@ -28,6 +28,9 @@ const CONDITION_OPTIONS = [
     { value: "flexible_completion", label: "Flexible on completion date" },
 ];
 
+/**
+ * Bid form with amount, position and funding vocabularies, and condition flags.
+ */
 export default function BidForm(props: BidFormProps) {
     const placeBidForProperty = placeBid.bind(null, props.propertyId);
     const [state, action, pending] = useActionState(placeBidForProperty, null);
@@ -63,7 +66,7 @@ export default function BidForm(props: BidFormProps) {
                 <input name="amount" type="number" min="1" step="1" required className="mt-1 w-full rounded border border-gray-300 px-3 py-2" />
             </label>
 
-                        <details className="group rounded border border-slate-200 p-3" open={props.defaultFunding === null}>
+            <details className="group rounded border border-slate-200 p-3" open={props.defaultFunding === null}>
                 <summary className="cursor-pointer list-none text-sm">
                     <span className="font-medium">Your terms</span>
                     {props.defaultFunding !== null && (

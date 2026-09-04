@@ -6,6 +6,9 @@ import VerificationForm from "@/components/verification-form";
 import SectionHeading from "@/components/section-heading";
 import { FileUp, ShieldCheck } from "lucide-react";
 
+/**
+ * Bidder's verification page for uploading their identity document.
+ */
 export default async function VerificationPage() {
   const session = await auth();
   if (!session || !session.user) {

@@ -1,4 +1,4 @@
-import { ListingType } from "./types"; 
+import { ListingType } from "./types";
 import { EventType } from "./chain";
 
 /**
@@ -27,7 +27,7 @@ export function formatPrice(pence: number): string {
 }
 
 /**
- * Takes the listing type internal representation and returns a string for frontent representation 
+ * Takes the listing type internal representation and returns a string for frontend display
  * @param listingType - Listing type 
  * @returns - String plainly stating the listing type 
  */
@@ -48,7 +48,7 @@ export function listingTypeLabel(listingType: ListingType): string {
  * Formats a string with the property's headline room numbers
  * @param bedrooms - number of bedrooms in the property
  * @param bathrooms - number of bathrooms in the property
- * @param receptions - number of recpetions in the property
+ * @param receptions - number of receptions in the property
  * @returns - formatted string for display on property cards 
  */
 export function featuresLine(bedrooms: number | null, bathrooms: number | null, receptions: number | null): string {
@@ -67,6 +67,11 @@ export function featuresLine(bedrooms: number | null, bathrooms: number | null, 
     return parts.join(" · ");
 }
 
+/**
+ * Turns a chain event type into a human readable label for the timeline
+ * @param eventType - the internal event type
+ * @returns - display label for the event
+ */
 export function eventTypeLabel(eventType: EventType): string {
     if (eventType === "LISTING_CREATED") return "Listing created";
     else if (eventType === "BID_PLACED") return "Bid placed";
@@ -80,16 +85,26 @@ export function eventTypeLabel(eventType: EventType): string {
     else if (eventType === "SALE_COLLAPSED") return "Sale collapsed";
     else if (eventType === "PROPERTY_RELISTED") return "Property relisted";
     else if (eventType === "SALE_COMPLETED") return "Sale Completed";
-;
+    ;
 
     const unhandled: never = eventType;
     throw new Error("Unhandled event type: " + unhandled);
 }
 
+/**
+ * Normalises an email for storage and comparison
+ * @param raw - email as typed by the user
+ * @returns - trimmed lowercase email
+ */
 export function standardiseEmail(raw: string): string {
     return raw.trim().toLowerCase();
 }
 
+/**
+ * Turns a stored buyer position into a display label
+ * @param position - stored position value, or null
+ * @returns - display label, or an empty string when not set
+ */
 export function buyerPositionLabel(position: string | null): string {
     if (position === "ftb") return "First-time buyer";
     if (position === "chain") return "In a chain";
@@ -97,6 +112,11 @@ export function buyerPositionLabel(position: string | null): string {
     return "";
 }
 
+/**
+ * Turns a stored funding method into a display label
+ * @param funding - stored funding value, or null
+ * @returns - display label, or an empty string when not set
+ */
 export function fundingLabel(funding: string | null): string {
     if (funding === "cash") return "Cash";
     if (funding === "mortgage") return "Mortgage";

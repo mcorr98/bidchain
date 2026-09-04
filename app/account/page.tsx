@@ -5,6 +5,9 @@ import ChangePasswordForm from "@/components/change-password-form";
 import SectionHeading from "@/components/section-heading";
 import { KeyRound, UserRound, Mail } from "lucide-react";
 
+/**
+ * Account management page for password and email changes.
+ */
 export default async function AccountPage() {
     const session = await auth();
     if (!session || !session.user) {

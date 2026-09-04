@@ -3,6 +3,9 @@
 import { useActionState } from "react";
 import { changeEmail } from "@/lib/actions/accounts";
 
+/**
+ * Account form for changing email. Requires the current password.
+ */
 export default function ChangeEmailForm() {
     const [state, action, pending] = useActionState(changeEmail, null);
 

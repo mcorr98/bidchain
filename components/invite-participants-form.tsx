@@ -7,6 +7,9 @@ type InvitationFormProps = {
     propertyId: number;
 };
 
+/**
+ * Agent form that invites a bidder to the property by email.
+ */
 export default function InvitationForm(props: InvitationFormProps) {
     const inviteParticipantToProperty = inviteBidder.bind(null, props.propertyId);
     const [state, action, pending] = useActionState(inviteParticipantToProperty, null);

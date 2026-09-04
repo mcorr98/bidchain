@@ -6,6 +6,9 @@ type PublishListingButtonProps = {
     propertyId: number;
 };
 
+/**
+ * Agent button that publishes a draft listing once the vendor has joined.
+ */
 export default function PublishListingButton(props: PublishListingButtonProps) {
     const publishForProperty = publishListing.bind(null, props.propertyId);
     const [state, action, pending] = useActionState(publishForProperty, null);

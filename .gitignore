@@ -40,9 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts 
 
-# incomplete 
-scripts/seed.mjs
-
 # Identity documents must never be committed
 private/ 
-verify.html

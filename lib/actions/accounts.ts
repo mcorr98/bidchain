@@ -4,7 +4,7 @@ import pool from "@/lib/db";
 import { redirect } from "next/navigation";
 import { hashToken } from "@/lib/invitations";
 import { standardiseEmail } from "@/lib/format";
-import { auth, signOut } from "@/auth"; 
+import { auth, signOut } from "@/auth";
 import { rateLimit } from "@/lib/rate-limit";
 
 
@@ -15,6 +15,14 @@ type RegistrationInviteRow = {
     expires_at: Date;
 };
 
+/**
+ * Open registration. Creates bidder accounts only: the role is fixed
+ * server-side and no form input can change it. A valid vendor activation
+ * token upgrades the new account to the vendor role instead. Registration
+ * is rate limited per email.
+ * @param formData - name, email, password, confirmation, and optional invite token
+ * @returns - { error: string } on failed checks, otherwise redirects signed in
+ */
 export async function registerAccount(_previousState: unknown, formData: FormData) {
 
     const name = formData.get("name");
@@ -102,6 +110,12 @@ export async function registerAccount(_previousState: unknown, formData: FormDat
     redirect(loginUrl);
 }
 
+/**
+ * Changes the signed-in user's password. Requires the current password to
+ * be re-entered and verified before the new hash is stored.
+ * @param formData - current password, new password, and confirmation
+ * @returns - { error: string } on failed checks, { success: true } on update
+ */
 export async function changePassword(_previousState: unknown, formData: FormData) {
 
     const session = await auth();
@@ -142,6 +156,13 @@ export async function changePassword(_previousState: unknown, formData: FormData
     return { success: true };
 }
 
+/**
+ * Changes the signed-in user's email. Requires the current password, checks
+ * the new address is not already in use, and forces sign-out afterwards so
+ * the session rebinds to the new handle.
+ * @param formData - new email and current password
+ * @returns - { error: string } on failed checks, otherwise signs the user out
+ */
 export async function changeEmail(_previousState: unknown, formData: FormData) {
 
     const session = await auth();

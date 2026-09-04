@@ -67,6 +67,9 @@ type PendingInviteRow = {
     email: string;
 };
 
+/**
+ * Property page with offers, history timeline and the bid panel, scoped to the viewer's role.
+ */
 export default async function PropertyPage(props: PropertyPageProps) {
 
     const params = await props.params;

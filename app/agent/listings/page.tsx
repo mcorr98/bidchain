@@ -114,8 +114,8 @@ export default async function AgentListingsPage(props: AgentListingsPageProps) {
 
     const listingResult = await pool.query<AgentListingRow>(
         `SELECT p.property_id, p.vendor_id, p.address_line_1, p.city, p.state, p.asking_price,
-        MAX(o.current_amount) FILTER (WHERE o.status = 'active') AS top_offer,
-        COUNT(o.offer_id) FILTER (WHERE o.status = 'active') AS offer_count,
+        MAX(o.current_amount) FILTER (WHERE o.status IN ('active', 'accepted')) AS top_offer,
+        COUNT(o.offer_id) FILTER (WHERE o.status IN ('active', 'accepted')) AS offer_count,
         p.created_at
         FROM properties p
         LEFT JOIN offers o ON o.property_id = p.property_id
@@ -146,7 +146,7 @@ export default async function AgentListingsPage(props: AgentListingsPageProps) {
         LEFT JOIN offers o ON o.offer_id = (e.details->>'offer_id')::int
         WHERE p.agent_id = $1 AND e.event_type IN ('BID_PLACED', 'BID_REVISED')
         ORDER BY e.timestamp DESC
-        LIMIT 15`,
+        LIMIT 5`,
         [agentId]
     );
     const activity = activityResult.rows;
@@ -182,7 +182,7 @@ export default async function AgentListingsPage(props: AgentListingsPageProps) {
 
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-2">
-                    <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Your listings</h2>
+                    <h2 className="pl-1 text-sm font-semibold uppercase tracking-wide text-gray-500">Your listings</h2>
                     <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1 text-sm">
                         <Link href="/agent/listings" className={viewTabClass(view === "active")}>Active</Link>
                         <Link href="/agent/listings?view=drafts" className={viewTabClass(view === "drafts")}>Drafts</Link>
@@ -275,31 +275,8 @@ export default async function AgentListingsPage(props: AgentListingsPageProps) {
                 </div>
 
                 <div className="space-y-6">
-                    <div>
-                        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">Recent bids</h2>
-                        <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
-                            {activity.map((item) => {
-                                return (
-                                    <li key={item.event_id} className="px-4 py-3">
-                                        <p className="text-sm font-semibold text-brand">
-                                            {formatPrice(item.amount)}
-                                            {item.offer_status !== null && item.offer_status !== "active" && item.offer_status !== "accepted" && (
-                                                <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
-                                                    {item.offer_status}
-                                                </span>
-                                            )}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                            {item.address_line_1} · {item.actor_name}
-                                        </p>
-                                        <p className="text-xs text-gray-400">
-                                            {item.timestamp.toLocaleDateString("en-GB")}
-                                        </p>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                        <h2 className="mt-6 text-sm font-semibold uppercase tracking-wide text-gray-500">Leads to chase</h2>
+                    <div className="space-y-2">
+                        <h2 className="pl-1 text-sm font-semibold uppercase tracking-wide text-gray-500">Leads to chase</h2>
                         {leads.length === 0 ? (
                             <p className="text-sm text-gray-500">No outstanding invitations.</p>
                         ) : (
@@ -328,6 +305,31 @@ export default async function AgentListingsPage(props: AgentListingsPageProps) {
                                 })}
                             </ul>
                         )}
+                    </div>
+                    <div className="space-y-2">
+                        <h2 className="pl-1 text-sm font-semibold uppercase tracking-wide text-gray-500">Recent bids</h2>
+                        <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
+                            {activity.map((item) => {
+                                return (
+                                    <li key={item.event_id} className="px-4 py-3">
+                                        <p className="text-sm font-semibold text-brand">
+                                            {formatPrice(item.amount)}
+                                            {item.offer_status !== null && item.offer_status !== "active" && item.offer_status !== "accepted" && (
+                                                <span className="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-wide text-gray-500">
+                                                    {item.offer_status}
+                                                </span>
+                                            )}
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            {item.address_line_1} · {item.actor_name}
+                                        </p>
+                                        <p className="text-xs text-gray-400">
+                                            {item.timestamp.toLocaleDateString("en-GB")}
+                                        </p>
+                                    </li>
+                                );
+                            })}
+                        </ul>
                     </div>
                 </div>
             </div>

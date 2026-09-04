@@ -10,6 +10,9 @@ const CONTENT_TYPES: Record<string, string> = {
     ".pdf": "application/pdf",
 };
 
+/**
+ * Serves a bidder's identity document from private storage. Access is gated by canViewIdDocument.
+ */
 export async function GET(
     request: Request,
     { params }: { params: Promise<{ filename: string }> }

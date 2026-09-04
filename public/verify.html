@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>BidChain record verifier</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 640px;
+            margin: 60px auto;
+            padding: 0 20px;
+            color: #1e293b;
+        }
+
+        #drop {
+            border: 2px dashed #94a3b8;
+            border-radius: 12px;
+            padding: 60px 20px;
+            text-align: center;
+            color: #64748b;
+        }
+
+        #drop.over {
+            border-color: #0f766e;
+            background: #f0fdfa;
+        }
+
+        #result {
+            margin-top: 24px;
+            padding: 16px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .valid {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            color: #166534;
+        }
+
+        .invalid {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            color: #991b1b;
+        }
+
+        .mono {
+            font-family: monospace;
+            font-size: 13px;
+        }
+
+        p.small {
+            font-size: 13px;
+            color: #64748b;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>BidChain record verifier</h1>
+    <p>Checks that an exported record was signed by the platform and has not been
+        altered since. Runs entirely on this computer; nothing is uploaded anywhere.</p>
+    <div id="drop">Drop a record file here, or <input type="file" id="picker" accept=".json"></div>
+    <div id="result"></div>
+    <p class="small">A VALID result proves the file matches the public key inside it.
+        To confirm that key is genuinely BidChain's, compare the fingerprint shown
+        against the fingerprint published by the platform.</p>
+    <script>
+
+        const EXPECTED_FINGERPRINT = "537cdf18c27ff448";
+
+        function base64ToBytes(base64) {
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        async function verifyFile(file) {
+            const result = document.getElementById("result");
+            result.style.display = "block";
+            try {
+                const doc = JSON.parse(await file.text());
+                if (!doc.signature) {
+                    result.className = "invalid";
+                    result.textContent = "This record is unsigned.";
+                    return;
+                }
+                const publicKey = await crypto.subtle.importKey(
+                    "spki",
+                    base64ToBytes(doc.signature.public_key),
+                    { name: "Ed25519" },
+                    false,
+                    ["verify"]
+                );
+                const recordBytes = new TextEncoder().encode(JSON.stringify(doc.record));
+                const valid = await crypto.subtle.verify(
+                    "Ed25519",
+                    publicKey,
+                    base64ToBytes(doc.signature.value),
+                    recordBytes
+                );
+                const digest = await crypto.subtle.digest("SHA-256", base64ToBytes(doc.signature.public_key));
+                const fingerprint = Array.from(new Uint8Array(digest))
+                    .map(function (b) { return b.toString(16).padStart(2, "0"); })
+                    .join("")
+                    .slice(0, 16);
+                if (valid && fingerprint === EXPECTED_FINGERPRINT) {
+                    result.className = "valid";
+                    result.innerHTML = "SIGNATURE VALID - signed by BidChain's published key (<span class=\"mono\">" + fingerprint + "</span>) and unaltered since.";
+                } else if (valid) {
+                    result.className = "invalid";
+                    result.innerHTML = "WARNING - the signature is valid but the key (<span class=\"mono\">" + fingerprint + "</span>) is NOT BidChain's published key. Treat this file as not the platform's.";
+                } else {
+                    result.className = "invalid";
+                    result.innerHTML = "SIGNATURE INVALID - this record was altered after signing.";
+                }
+            } catch (err) {
+                result.className = "invalid";
+                result.textContent = "Could not read this file as a BidChain record: " + err.message;
+            }
+        }
+
+        const drop = document.getElementById("drop");
+        drop.addEventListener("dragover", function (e) { e.preventDefault(); drop.classList.add("over"); });
+        drop.addEventListener("dragleave", function () { drop.classList.remove("over"); });
+        drop.addEventListener("drop", function (e) {
+            e.preventDefault();
+            drop.classList.remove("over");
+            if (e.dataTransfer.files.length > 0) {
+                verifyFile(e.dataTransfer.files[0]);
+            }
+        });
+        document.getElementById("picker").addEventListener("change", function (e) {
+            if (e.target.files.length > 0) {
+                verifyFile(e.target.files[0]);
+            }
+        });
+    </script>
+</body>
+
+</html>

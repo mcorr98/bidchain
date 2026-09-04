@@ -8,7 +8,7 @@ import { EventType, JsonValue } from "@/lib/chain";
 import { BiddingState } from "@/lib/types";
 import { appendEvent } from "@/lib/events";
 import { sendBidReceiptEmail } from "@/lib/email";
-import { buildSignedReceipt } from "@/lib/receipts"; 
+import { buildSignedReceipt } from "@/lib/receipts";
 
 /**
  * Places a bid on a property. Writes to the chain only after input passes through validation stack:
@@ -19,8 +19,11 @@ import { buildSignedReceipt } from "@/lib/receipts";
  * 5. Amount is a positive whole number of pounds 
  * 
  * Amounts are entered in pounds and stored as integer pence.
- * Empty conditions are normalised to NULL
- * 
+ * Position, funding and condition flags must come from the declared vocabularies.
+ * Empty conditions are normalised to NULL.
+ * The bidder's declared position is written back to their profile.
+ * After commit a signed receipt is emailed to the bidder, fail-soft.
+ *
  * @param propertyId - target property
  * @param formData - amount (pounds) and optional conditions
  * @returns - { error: string } on failed checks, { success: true } on db insert
@@ -77,7 +80,7 @@ export async function placeBid(propertyId: number, _previousState: unknown, form
     if (fundingRaw === "cash" || fundingRaw === "mortgage" || fundingRaw === "co_ownership") {
         funding = fundingRaw;
     } else {
-        return { error: "Select how the purchase's funding method" };
+        return { error: "Select the purchase's funding method" };
     }
 
     const ALLOWED_FLAGS = ["subject_to_survey", "flexible_completion"];

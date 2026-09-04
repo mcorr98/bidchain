@@ -4,6 +4,9 @@ import { canManageProperty, isPropertyVendor } from "@/lib/permissions";
 import { EventRow, verifyChain } from "@/lib/chain";
 import { signRecord } from "@/lib/signing";
 
+/**
+ * Downloads the property's full event record as signed JSON. Access is gated to the property's participants, vendor and agent.
+ */
 export async function GET(request: Request, { params }: { params: Promise<{ propertyId: string }> }) {
     const { propertyId } = await params;
 

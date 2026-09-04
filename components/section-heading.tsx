@@ -5,6 +5,9 @@ type SectionHeadingProps = {
     label: string;
 };
 
+/**
+ * Small labelled heading used to title page sections.
+ */
 export default function SectionHeading(props: SectionHeadingProps) {
     const Icon = props.icon;
     return (

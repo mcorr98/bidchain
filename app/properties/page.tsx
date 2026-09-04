@@ -7,6 +7,9 @@ import PropertyCard from "@/components/property-card";
 import SectionHeading from "@/components/section-heading";
 import { HandCoins, House } from "lucide-react";
 
+/**
+ * Bidder's property list, split by bidding and watching.
+ */
 export default async function PropertiesPage() {
 
     const session = await auth();

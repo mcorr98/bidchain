@@ -27,6 +27,6 @@ export function signRecord(recordJson: string): RecordSignature | null {
         algorithm: "Ed25519",
         public_key: PUBLIC_KEY_BASE64,
         value: signatureBytes.toString("base64"),
-        note: "Signature covers the exact JSON bytes of the record field. Verify with scripts/verify-record.mjs. Trust in the public key must be established with the platform directly, not taken from this file.",
+        note: "Signature covers the exact JSON bytes of the record field. Trust in the public key must be established with the platform directly, not taken from this file.",
     };
-}
+} 

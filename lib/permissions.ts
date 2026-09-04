@@ -78,7 +78,7 @@ export async function canManageProperty(propertyId: number, userId: number): Pro
  * Checks whether the user is the vendor selling the property 
  * @param propertyId - property in question
  * @param userId - user details to check as the vendor  
- * @returns true is vendor is the seller of the property, false if not 
+ * @returns true if the vendor is the seller of the property, false if not
  */
 export async function isPropertyVendor(propertyId: number, userId: number): Promise<boolean> {
     const result = await pool.query(
@@ -164,7 +164,7 @@ export async function hasBidderProfile(userId: number): Promise<boolean> {
 }
 
 /**
- * Checks whether a user has vendor aprofile. 
+ * Checks whether a user has a vendor profile.
  * @param userId - the user being checked
  * @returns true if a vendor profile exists for this user, otherwise false
  */

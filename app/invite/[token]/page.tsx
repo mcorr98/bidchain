@@ -32,6 +32,9 @@ function maskEmail(email: string): string {
     return address[0] + "***" + address[address.length - 1] + "@" + domain;
 }
 
+/**
+ * Invitation landing page. Routes the token through registration or acceptance.
+ */
 export default async function InvitePage(props: InvitePageProps) {
     const params = await props.params;
     const tokenHash = hashToken(params.token);

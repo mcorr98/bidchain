@@ -42,6 +42,9 @@ function fieldSnapshot(form: HTMLFormElement): string {
     return parts.join("|");
 }
 
+/**
+ * Draft listing workbench form with a guard against losing unsaved changes.
+ */
 export default function DraftEditForm(props: DraftEditFormProps) {
     const boundAction = updateDraftListing.bind(null, props.propertyId);
     const [state, formAction, pending] = useActionState(boundAction, null);

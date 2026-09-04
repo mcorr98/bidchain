@@ -7,6 +7,9 @@ type RelistFormProps = {
     currentAskingPricePounds: number;
 };
 
+/**
+ * Agent form that relists a collapsed property with a new asking price.
+ */
 export default function RelistForm(props: RelistFormProps) {
     const relistThisProperty = relistProperty.bind(null, props.propertyId);
     const [state, action, pending] = useActionState(relistThisProperty, null);

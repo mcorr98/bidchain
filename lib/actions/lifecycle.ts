@@ -368,6 +368,14 @@ function parseOptionalWholeNumber(value: FormDataEntryValue | null): ParsedOptio
     return parsed;
 }
 
+/**
+ * Vendor accepts an offer on their closed property. Appends BID_ACCEPTED,
+ * marks the winning offer accepted, expires the rest, and moves the
+ * property to sale_agreed. Only the vendor can accept and only from closed.
+ * @param propertyId - the property whose offer is being accepted
+ * @param offerId - the offer the vendor chose
+ * @returns - { error: string } on failed checks, { success: true } on commit
+ */
 export async function acceptBid(propertyId: number, offerId: number, _previousState: unknown, formData: FormData) {
 
     const session = await auth();
@@ -454,6 +462,12 @@ export async function acceptBid(propertyId: number, offerId: number, _previousSt
     return { success: true };
 }
 
+/**
+ * Agent records the sale completing. Appends SALE_COMPLETED and moves the
+ * property to its terminal completed state.
+ * @param propertyId - the property whose sale completed
+ * @returns - { error: string } on failed checks, { success: true } on commit
+ */
 export async function completeSale(propertyId: number, _previousState: unknown, formData: FormData) {
 
     const session = await auth();
@@ -802,7 +816,8 @@ export async function withdrawListing(propertyId: number, _previousState: unknow
 }
 
 /**
- * Updates a draft listing's details. 
+ * Updates a draft listing's details. No chain event is written: drafts are
+ * mutable because no genesis event exists until publication.
  */
 export async function updateDraftListing(propertyId: number, _previousState: unknown, formData: FormData) {
 

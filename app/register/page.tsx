@@ -1,5 +1,5 @@
-import RegisterForm from "@/components/register-form"; 
-import pool from '@/lib/db'; 
+import RegisterForm from "@/components/register-form";
+import pool from '@/lib/db';
 import { hashToken } from "@/lib/invitations";
 
 type RegisterSearchParams = {
@@ -10,6 +10,9 @@ type RegisterPageProps = {
     searchParams: Promise<RegisterSearchParams>;
 };
 
+/**
+ * Registration page for new accounts.
+ */
 export default async function RegisterPage(props: RegisterPageProps) {
     const params = await props.searchParams;
 
@@ -19,7 +22,7 @@ export default async function RegisterPage(props: RegisterPageProps) {
     }
 
     let invitedEmail = "";
-     let inviteToken = "";
+    let inviteToken = "";
     if (inviteToken !== "") {
         const inviteResult = await pool.query<{ email: string }>(
             `SELECT email FROM invitations
@@ -29,7 +32,7 @@ export default async function RegisterPage(props: RegisterPageProps) {
         invitedEmail = inviteResult.rows[0]?.email ?? "";
     }
 
-   
+
     if (nextPath.startsWith("/invite/")) {
         inviteToken = nextPath.slice("/invite/".length);
     }

@@ -7,6 +7,9 @@ type WithdrawBidButtonProps = {
     offerId: number;
 };
 
+/**
+ * Bidder button that withdraws their own offer.
+ */
 export default function WithdrawBidButton(props: WithdrawBidButtonProps) {
     const withDrawThisBid = withdrawBid.bind(null, props.propertyId, props.offerId);
     const [state, action, pending] = useActionState(withDrawThisBid, null);

@@ -6,6 +6,9 @@ type PropertyCardProps = {
     property: Property;
 };
 
+/**
+ * Card summarising a property for grid views.
+ */
 export default function PropertyCard(props: PropertyCardProps) {
     const property = props.property;
 

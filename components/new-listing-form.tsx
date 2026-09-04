@@ -2,6 +2,9 @@
 import { useActionState } from "react";
 import { createListing } from "@/lib/actions/lifecycle";
 
+/**
+ * Agent form that creates a new draft listing.
+ */
 export default function NewListingForm() {
     const [state, action, pending] = useActionState(createListing, null);
 

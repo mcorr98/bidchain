@@ -7,6 +7,9 @@ type ReinviteButtonProps = {
     email: string;
 };
 
+/**
+ * Agent button that re-sends a lapsed or expired invitation.
+ */
 export default function ReinviteButton(props: ReinviteButtonProps) {
     const reinvite = inviteBidder.bind(null, props.propertyId);
     const [state, action, pending] = useActionState(reinvite, null);

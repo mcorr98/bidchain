@@ -6,6 +6,9 @@ type WithdrawListingFormProps = {
     propertyId: number;
 };
 
+/**
+ * Form that withdraws a listing from the market.
+ */
 export default function WithdrawListingForm(props: WithdrawListingFormProps) {
     const withdrawThisListing = withdrawListing.bind(null, props.propertyId);
     const [state, action, pending] = useActionState(withdrawThisListing, null);
@@ -47,7 +50,7 @@ export default function WithdrawListingForm(props: WithdrawListingFormProps) {
                 </label>
                 <button type="submit" disabled={pending}
                     className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50">
-                        {buttonLabel}
+                    {buttonLabel}
                 </button>
             </form>
         </div>

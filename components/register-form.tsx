@@ -9,6 +9,9 @@ type RegisterFormProps = {
     inviteToken: string;
 };
 
+/**
+ * Registration form for new accounts.
+ */
 export default function RegisterForm(props: RegisterFormProps) {
     const [state, action, pending] = useActionState(registerAccount, null);
 

@@ -15,7 +15,7 @@ let outsiderId: number;
 let propertyId: number;
 
 function signInAs(userId: number): void {
-    vi.mocked(auth).mockResolvedValue({ user: { id: String(userId), role: "bidder" } } as never);
+    vi.mocked(auth).mockResolvedValue({ user: { id: String(userId), role: "bidder", email: "bid.bidder@bidchain.test" } } as never);
 }
 
 function bidForm(pounds: number, position: string, funding: string): FormData {
@@ -151,8 +151,8 @@ describe("placeBid happy path", () => {
         expect(verifyChain(events.rows).valid).toBe(true);
 
         const profile = await pool.query<{ buyer_position: string }>(
-        `SELECT buyer_position FROM bidder_profiles WHERE user_id = $1`,
-        [bidderId]
+            `SELECT buyer_position FROM bidder_profiles WHERE user_id = $1`,
+            [bidderId]
         );
         expect(profile.rows[0].buyer_position).toBe("ftb");
     });

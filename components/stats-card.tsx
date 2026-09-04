@@ -7,6 +7,9 @@ type StatCardProps = {
     href?: string;
 };
 
+/**
+ * Dashboard card showing one headline metric.
+ */
 export default function StatCard(props: StatCardProps) {
     if (props.href === undefined) {
         return (

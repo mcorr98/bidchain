@@ -43,6 +43,9 @@ type PendingInviteRow = {
     expires_at: Date;
 };
 
+/**
+ * Draft listing workbench page for the managing agent.
+ */
 export default async function DraftPage(props: DraftPageProps) {
     const session = await auth();
     if (!session) {

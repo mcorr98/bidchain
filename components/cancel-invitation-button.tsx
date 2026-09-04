@@ -8,6 +8,9 @@ type CancelInvitationButtonProps = {
     label: string;
 };
 
+/**
+ * Agent link that cancels an outstanding invitation and revokes its token.
+ */
 export default function CancelInvitationButton(props: CancelInvitationButtonProps) {
     const cancelThisInvitation = cancelInvitation.bind(null, props.propertyId, props.email);
     const [state, action, pending] = useActionState(cancelThisInvitation, null);

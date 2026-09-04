@@ -8,6 +8,9 @@ type ReplaceVendorFormProps = {
     vendorJoined: boolean;
 };
 
+/**
+ * Agent form that replaces the vendor invited to a draft listing.
+ */
 export default function ReplaceVendorForm(props: ReplaceVendorFormProps) {
     const boundAction = replaceVendorInvitation.bind(null, props.propertyId);
     const [state, action, pending] = useActionState(boundAction, null);

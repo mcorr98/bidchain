@@ -42,7 +42,7 @@ export async function sendBidderInviteEmail(to: string, propertyAddress: string,
         "(This link is single use, and expires in 7 days)",
     ].join("\n");
     return sendEmail(to, subject, text);
-} 
+}
 
 /**
  * Activation email for a vendor invited by their estate agency

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import pool from '@/lib/db';
 
+/**
+ * Health check endpoint. Confirms the app can reach the database.
+ */
 export async function GET() {
     try {
         const result = await pool.query('SELECT NOW()');

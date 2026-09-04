@@ -9,11 +9,11 @@ type ParticipantLabelOptions = {
 
 /**
  * Display-name alias policy.
- * The property's estate agent has visibility of names 
- * The agency acts openly under its own name 
- * The vendor simnply appears as "Vendor" to bidders
- * Bidders appear as  chain-derived aliases; 
- * Viewers see themselves
+ * The property's estate agent has visibility of names.
+ * The agency acts openly under its own name.
+ * The vendor simply appears as "Vendor" to bidders.
+ * Bidders appear as chain-derived aliases.
+ * Viewers see themselves.
  */
 export function makeParticipantLabel(options: ParticipantLabelOptions): (actorId: number, actorName: string) => string {
     return function participantLabel(actorId: number, actorName: string): string {
@@ -38,8 +38,8 @@ export function makeParticipantLabel(options: ParticipantLabelOptions): (actorId
 }
 
 /**
- * Aliases: dervied from chain and assigned by order of first bid. 
- * They inherit the record's immutability so they never lose their order. 
+ * Aliases: derived from the chain and assigned by order of first bid.
+ * They inherit the record's immutability so they never lose their order.
  */
 export function buildBidderAliases(bidActorIdsInSequenceOrder: number[]): Map<number, string> {
     const aliases = new Map<number, string>();

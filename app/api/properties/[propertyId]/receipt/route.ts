@@ -2,6 +2,9 @@ import { auth } from "@/auth";
 import { canViewOffers } from "@/lib/permissions";
 import { buildSignedReceipt } from "@/lib/receipts";
 
+/**
+ * Downloads a signed receipt committing to the property's current chain tail. Access is gated by canViewOffers.
+ */
 export async function GET(request: Request, { params }: { params: Promise<{ propertyId: string }> }) {
     const { propertyId } = await params;
 

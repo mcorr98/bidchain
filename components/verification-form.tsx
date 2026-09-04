@@ -6,8 +6,11 @@ import type { VerificationFormState } from "@/lib/actions/verification";
 
 const initialState: VerificationFormState = { status: "idle", message: "" };
 
-const MAX_UPLOAD_BYTES = 1024 * 1024; 
+const MAX_UPLOAD_BYTES = 1024 * 1024;
 
+/**
+ * Bidder form that uploads an identity document for review.
+ */
 export default function VerificationForm() {
     const [state, action, pending] = useActionState(submitVerification, initialState);
     const [clientError, setClientError] = useState("");

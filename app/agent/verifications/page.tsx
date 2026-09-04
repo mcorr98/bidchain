@@ -15,7 +15,7 @@ type QueueRow = {
 
 /**
  * Review queue for a logged in agent: contains bidders participating in this agency's
- * listings who have submitted a document but have no decision from this
+ * listings who have submitted an ID document but have no decision from this
  * agency yet. 
  * @returns - verification queue page content HTML
  */

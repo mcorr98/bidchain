@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import pool from "@/lib/db";
 import { redirect } from "next/navigation";
-import { isActiveAgency, hasBidderProfile } from "@/lib/permissions"; 
+import { isActiveAgency, hasBidderProfile } from "@/lib/permissions";
 import { matchesMagicBytes } from "@/lib/uploads_validation";
 
 export type VerificationFormState = {
@@ -22,6 +22,18 @@ const ALLOWED_TYPES: Record<string, string> = {
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
+/**
+ * Handles a bidder uploading their identity document for review.
+ * The file must be a JPEG, PNG or PDF under 5MB and its magic bytes must
+ * match the claimed type. The document is hashed with SHA-256, stored
+ * outside public/ under a server-generated name, and the hash is saved on
+ * the profile so later decisions bind to these exact bytes. A re-upload
+ * replaces the previous file and clears any rejected decisions so the
+ * bidder re-enters the review queue.
+ * @param prevState - previous form state from useActionState
+ * @param formData - the uploaded document
+ * @returns - form state with an error message or success confirmation
+ */
 export async function submitVerification(prevState: VerificationFormState, formData: FormData): Promise<VerificationFormState> {
 
   const session = await auth();
@@ -56,8 +68,8 @@ export async function submitVerification(prevState: VerificationFormState, formD
   const buffer = Buffer.from(await file.arrayBuffer());
 
   if (!matchesMagicBytes(buffer, file.type)) {
-        return { status: "error", message: "File contents don't match its type." };
-    }
+    return { status: "error", message: "File contents don't match its type." };
+  }
 
   const documentHash = createHash("sha256").update(buffer).digest("hex");
   const storedName = randomUUID() + extension;
@@ -103,9 +115,12 @@ export async function submitVerification(prevState: VerificationFormState, formD
 export type DecisionFormState = { error: string } | { success: true } | null;
 
 /**
- * Records an agency's verification decision on a bidder. 
+ * Records an agency's verification decision on a bidder.
+ * The decision binds to the document hash the reviewer actually saw. If the
+ * bidder replaced their document between review and approval the hashes
+ * differ and the decision is refused, closing the check-then-act gap.
  * @param bidderId - the bidder being decided on
- * @param formData - decision ('verified' | 'rejected') and optional reason
+ * @param formData - decision ('verified' | 'rejected'), optional reason, and the reviewed document's hash
  * @returns - { error: string } on failed checks, { success: true } on insert
  */
 export async function decideVerification(bidderId: number, _previousState: unknown, formData: FormData): Promise<DecisionFormState> {

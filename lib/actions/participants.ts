@@ -18,6 +18,14 @@ type InvitationLockRow = {
     purpose: string;
 };
 
+/**
+ * Agent invites a bidder to a property by email. Stores only the token's
+ * hash, records the invited participant, and emails the single-use link.
+ * Invitations can only be sent while bidding is open.
+ * @param propertyId - the property the bidder is invited to
+ * @param formData - the invitee's email address
+ * @returns - { error: string } on failed checks, success with email status otherwise
+ */
 export async function inviteBidder(propertyId: number, _previousState: unknown, formData: FormData) {
 
     const session = await auth();
@@ -81,6 +89,13 @@ export async function inviteBidder(propertyId: number, _previousState: unknown, 
     return { success: true, emailed, email: invitedEmail };
 }
 
+/**
+ * Redeems an invitation link. Validates the token against its stored hash,
+ * refuses expired, cancelled, already-used or wrong-email tokens, then
+ * joins the user to the property and marks the invitation accepted.
+ * @param token - the plaintext token from the link
+ * @returns - { error: string } on refusal, otherwise redirects into the property
+ */
 export async function acceptInvitation(token: string, _previousState: unknown, formData: FormData) {
     const session = await auth();
     let redirectPath = "/properties";
@@ -182,7 +197,7 @@ export async function acceptInvitation(token: string, _previousState: unknown, f
     }
 
     redirect(redirectPath);
-} 
+}
 
 /**
  * Cancels a pending invitation

@@ -2,6 +2,9 @@
 import { useActionState } from "react";
 import { changePassword } from "@/lib/actions/accounts";
 
+/**
+ * Account form for changing password. Requires the current password.
+ */
 export default function ChangePasswordForm() {
     const [state, action, pending] = useActionState(changePassword, null);
 

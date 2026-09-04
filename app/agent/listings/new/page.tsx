@@ -1,7 +1,10 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import NewListingForm from "@/components/new-listing-form"; 
+import NewListingForm from "@/components/new-listing-form";
 
+/**
+ * New listing page where an agent starts a draft.
+ */
 export default async function NewListingPage() {
     const session = await auth();
     if (!session || session.user.role !== "agent") {

@@ -1,6 +1,9 @@
 import { auth } from "@/auth";
 import { getReportMetrics, parseDateParam } from "@/lib/reporting";
 
+/**
+ * CSV export of the agent's report metrics for a chosen date range.
+ */
 export async function GET(request: Request) {
     const session = await auth();
     if (!session || session.user.role !== "agent") {

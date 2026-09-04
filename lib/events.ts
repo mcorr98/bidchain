@@ -21,7 +21,7 @@ type AppendedEvent = {
  * builds the frozen preimage, hashes, and inserts.
  *
  * The caller must hold the property row using FOR UPDATE inside an open
- * transaction before callingto guard against forking the chain. This function
+ * transaction before calling, to guard against forking the chain. This function
  * deliberately takes the caller's client, not the pool, so it cannot be
  * used outside a transaction by mistake.
  */

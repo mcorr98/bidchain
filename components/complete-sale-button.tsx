@@ -7,6 +7,9 @@ type CompleteSaleButtonProps = {
     propertyId: number;
 };
 
+/**
+ * Agent button that records the sale completing.
+ */
 export default function CompleteSaleButton(props: CompleteSaleButtonProps) {
     const completeThisSale = completeSale.bind(null, props.propertyId);
     const [state, action, pending] = useActionState(completeThisSale, null);

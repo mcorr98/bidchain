@@ -7,6 +7,9 @@ type AcceptBidButtonProps = {
     offerId: number;
 };
 
+/**
+ * Vendor button that accepts an offer on their property.
+ */
 export default function AcceptBidButton(props: AcceptBidButtonProps) {
     const acceptThisBid = acceptBid.bind(null, props.propertyId, props.offerId);
     const [state, action, pending] = useActionState(acceptThisBid, null);

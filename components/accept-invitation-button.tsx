@@ -6,6 +6,9 @@ type AcceptInvitationButtonProps = {
     token: string;
 };
 
+/**
+ * Button that redeems an invitation token for the signed-in user.
+ */
 export default function AcceptInvitationButton(props: AcceptInvitationButtonProps) {
     const acceptThisInvitation = acceptInvitation.bind(null, props.token);
     const [state, action, pending] = useActionState(acceptThisInvitation, null);

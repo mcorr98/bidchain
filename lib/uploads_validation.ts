@@ -1,5 +1,8 @@
 /**
  * Validates that a file's leading bytes match its alleged type
+ * @param buffer - the uploaded file's bytes
+ * @param mimeType - the type the upload claims to be
+ * @returns - true if the magic bytes match the claimed type, false otherwise
  */
 export function matchesMagicBytes(buffer: Buffer, mimeType: string): boolean {
     if (mimeType === "image/jpeg") {

@@ -35,6 +35,9 @@ const PUBLIC_DETAIL_KEYS = [
 ];
 const TERMS_DETAIL_KEYS = ["conditions", "condition_flags", "note"];
 
+/**
+ * Full event record page showing every chain event with its verification status.
+ */
 export default async function ChainDetailsPage(props: ChainPageProps) {
     const params = await props.params;
     const propertyId = Number(params.id);
